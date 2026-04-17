@@ -71,3 +71,26 @@ class DomainEventRow(Base):
 
     def __repr__(self):
         return f"<DomainEventRow type={self.event_type} at={self.occurred_at}>"
+
+class WaitlistRow(Base):
+    __tablename__ = "waitlist"
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    resource_id = Column(
+        UUID(as_uuid=True), ForeignKey("resources.id", ondelete="CASCADE"), nullable=False
+    )
+    slot_start  = Column(DateTime(timezone=True), nullable=False)
+    slot_end    = Column(DateTime(timezone=True), nullable=False)
+    user_id     = Column(UUID(as_uuid=True), nullable=False)
+    position    = Column(Integer, nullable=False)
+    joined_at   = Column(DateTime(timezone=True), nullable=False, server_default=text("NOW()"))
+
+    resource = relationship("ResourceRow", back_populates="waitlist", lazy="raise")
+
+    __table_args__ = (
+        UniqueConstraint("resource_id", "slot_start", "user_id", name="uq_waitlist_user_slot"),
+        Index("ix_waitlist_resource_slot_position", "resource_id", "slot_start", "position"),
+    )
+
+    def __repr__(self):
+        return f"<WaitlistRow resource={self.resource_id} pos={self.position} user={self.user_id}>"
