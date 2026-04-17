@@ -1,0 +1,88 @@
+version: "3.9"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: campusbook-postgres
+    
+    environment:
+      POSTGRES_DB: campusbook
+      POSTGRES_USER: campusbook
+      POSTGRES_PASSWORD: secret123
+    
+    ports:
+      - "5432:5432"
+    
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U campusbook"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    
+    networks:
+      - campusbook
+
+  # Redis Cache + Pub/Sub
+  redis:
+    image: redis:7-alpine
+    container_name: campusbook-redis
+    
+    # Enable keyspace notifications for TTL events
+    command: redis-server --notify-keyspace-events KEA
+    
+    ports:
+      - "6379:6379"
+    
+    volumes:
+      - redisdata:/data
+    
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    
+    networks:
+      - campusbook
+
+  # FastAPI Backend
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: campusbook-api
+    
+    ports:
+      - "8000:8000"
+    
+    environment:
+      DATABASE_URL: postgresql+asyncpg://campusbook:secret123@postgres/campusbook
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev-secret-change-in-production
+      PYTHONPATH: .
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    
+    volumes:
+      - ./backend/app:/app/app  # hot reload
+    
+    networks:
+      - campusbook
+    
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  campusbook:
+    driver: bridge
