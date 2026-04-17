@@ -1,3 +1,15 @@
+"""
+Alembic migration environment.
+
+  The FastAPI app uses asyncpg (async driver) but Alembic needs a SYNC connection
+  to run DDL (CREATE TABLE, EXCLUDE constraints, etc.).
+  Use psycopg2 via DATABASE_SYNC_URL env var for migrations only.
+  The app never uses psycopg2 at runtime.
+
+  Alternative (async Alembic with asyncio.run) works but adds complexity for no benefit —
+  DDL migrations do not need to be async.
+"""
+
 import os
 import sys
 from logging.config import fileConfig

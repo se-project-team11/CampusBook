@@ -4,6 +4,12 @@ Revision ID: 001
 Revises:
 Create Date: 2026-04-15
 
+  1. Composite indexes added (resource_id+slot, user_id, state, event type)
+     — MD had no indexes; queries on large tables would be full-table scans
+  2. Complete downgrade() implemented — MD left this implicit
+  3. btree_gist extension created in upgrade, dropped in downgrade
+  4. Index names are explicit for reliable downgrade
+
 The EXCLUDE constraint is the DB-level guarantee against overlapping bookings.
 Even if app-level pessimistic locking fails, this constraint prevents corrupt data.
 """
