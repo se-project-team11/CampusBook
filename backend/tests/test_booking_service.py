@@ -237,6 +237,14 @@ class TestCreateBookingErrors:
             pass
         redis.set.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_notification_failure_does_not_fail_booking(self):
+        svc, repo, event_log, notif, redis = make_service()
+        notif.on_booking_event.side_effect = Exception("Notification Service Down")
+        # Should not raise
+        booking = await svc.create_booking(None, USER_ID, RESOURCE_ID, SLOT)
+        assert booking.state == BookingState.CONFIRMED
+
 
 # ── Cancel booking tests ─────────────────────────────────────────────────────
 
@@ -278,6 +286,16 @@ class TestCancelBooking:
         other_user = uuid.uuid4()
         with pytest.raises(BookingPermissionError):
             await svc.cancel_booking(None, booking.id, other_user)
+
+    @pytest.mark.asyncio
+    async def test_cancel_notification_failure_does_not_fail_cancellation(self):
+        svc, repo, event_log, notif, redis = make_service()
+        booking = await svc.create_booking(None, USER_ID, RESOURCE_ID, SLOT)
+        notif.on_booking_event.side_effect = Exception("Notification Service Down")
+        # Should not raise
+        await svc.cancel_booking(None, booking.id, USER_ID)
+        stored = await repo.find_by_id(booking.id)
+        assert stored.state == BookingState.RELEASED
 
 
 # ── Get booking tests ─────────────────────────────────────────────────────────
