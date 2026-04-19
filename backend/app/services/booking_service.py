@@ -278,7 +278,11 @@ class BookingService:
         # WebSocket channels are the Observers. BookingService fires and
         # forgets — notification failure MUST NOT cause booking failure
         # (circuit breaker is BE2's responsibility in NotificationService).
-        await self._notif.on_booking_event(event)
+        try:
+            await self._notif.on_booking_event(event)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to send booking notification: {e}")
 
         return booking
 
@@ -317,7 +321,11 @@ class BookingService:
             resource_id=booking.resource_id,
         )
         await self._event_log.append(cancel_event)
-        await self._notif.on_booking_event(cancel_event)
+        try:
+            await self._notif.on_booking_event(cancel_event)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to send cancellation notification: {e}")
 
     async def get_booking(self, booking_id: UUID) -> Booking:
         """Fetch a booking by ID. Raises BookingNotFoundError if missing."""
