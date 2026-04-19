@@ -61,6 +61,7 @@ services:
     
     environment:
       DATABASE_URL: postgresql+asyncpg://campusbook:secret123@postgres/campusbook
+      DATABASE_SYNC_URL: postgresql+psycopg2://campusbook:secret123@postgres/campusbook
       REDIS_URL: redis://redis:6379
       JWT_SECRET: dev-secret-change-in-production
       PYTHONPATH: .
@@ -73,6 +74,8 @@ services:
     
     volumes:
       - ./backend/app:/app/app  # hot reload
+      - ./backend/tests:/app/tests
+      - ./backend/pytest.ini:/app/pytest.ini
     
     networks:
       - campusbook
