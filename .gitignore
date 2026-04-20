@@ -59,7 +59,10 @@ build/
 #Miscellaneous
 References/
 
+<<<<<<< HEAD
 backend/venv
+=======
+>>>>>>> 8a5874d (Config: Update gitignore rules and workspace settings)
 # Vite/Frontend additions
 npm-debug.log*
 yarn-debug.log*
@@ -75,4 +78,8 @@ dist-ssr
 *.ntvs*
 *.njsproj
 *.sln
+<<<<<<< HEAD
 *.sw?
+=======
+*.sw?
+>>>>>>> 8a5874d (Config: Update gitignore rules and workspace settings)
