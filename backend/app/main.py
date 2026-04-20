@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.base import engine
 from app.routes.bookings import router as bookings_router
+from app.routes.auth import router as auth_router
 
 
 from app.websocket.hub import hub
@@ -57,6 +58,7 @@ app.add_middleware(
 )
 
 # Register routers
+app.include_router(auth_router)
 app.include_router(bookings_router)
 
 # Register BE2 routers
