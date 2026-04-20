@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.db.base import engine
 from app.routes.auth import router as auth_router
 from app.routes.bookings import router as bookings_router
+from app.routes.checkin import router as checkin_router
+from app.routes.resources import router as resources_router
 
 
 from app.websocket.hub import hub
