@@ -9,6 +9,11 @@ never imports PostgresBookingRepository, StudyRoomAdapter, etc.
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.services.checkin_service import CheckInService
+    from app.services.catalogue_service import CatalogueService
 
 import redis.asyncio as aioredis
 from fastapi import Depends
@@ -73,7 +78,7 @@ def get_booking_service(
 
 def get_checkin_service(
     redis=Depends(get_redis),
-) -> "app.services.checkin_service.CheckInService":
+) -> CheckInService:
     from app.services.checkin_service import CheckInService
     from app.services.notification_service import NotificationService, EmailChannel, SMSChannel, WebSocketChannel
     from app.db.base import AsyncSessionLocal
@@ -92,6 +97,6 @@ def get_checkin_service(
 def get_catalogue_service(
     db: AsyncSession = Depends(get_db),
     redis=Depends(get_redis),
-) -> "app.services.catalogue_service.CatalogueService":
+) -> CatalogueService:
     from app.services.catalogue_service import CatalogueService
     return CatalogueService(session=db, redis=redis)
