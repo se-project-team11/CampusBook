@@ -48,19 +48,18 @@ def get_booking_service(
     repo      = PostgresBookingRepository(db)
     event_log = PostgresDomainEventLog(db)
 
-    # ── BE2 dependencies — uncomment when BE2 delivers their modules ─────────
-    # from app.adapters.registry import AdapterRegistry
-    # from app.strategies.registry import StrategyRegistry
-    # from app.services.notification_service import NotificationService, EmailChannel, WebSocketChannel
-    # adapter_registry   = AdapterRegistry(db)
-    # strategy_registry  = StrategyRegistry(db)
-    # notification_svc   = NotificationService([EmailChannel(), WebSocketChannel(redis)])
-
-    # ── Stub registries for Day 6–8 (replace when BE2 is ready) ────────────
-    from app.dependencies_stubs import StubAdapterRegistry, StubStrategyRegistry, StubNotificationService
-    adapter_registry  = StubAdapterRegistry()
-    strategy_registry = StubStrategyRegistry()
-    notification_svc  = StubNotificationService()
+    # ── BE2 dependencies ─────────
+    from app.adapters.registry import AdapterRegistry
+    from app.strategies.registry import StrategyRegistry
+    from app.services.notification_service import NotificationService, EmailChannel, SMSChannel, WebSocketChannel
+    
+    adapter_registry   = AdapterRegistry(db)
+    strategy_registry  = StrategyRegistry(db)
+    notification_svc   = NotificationService([
+        EmailChannel(), 
+        SMSChannel(), 
+        WebSocketChannel(redis)
+    ])
 
     return BookingService(
         adapter_registry=adapter_registry,
@@ -71,3 +70,28 @@ def get_booking_service(
         notification_svc=notification_svc,
         redis=redis,
     )
+
+def get_checkin_service(
+    redis=Depends(get_redis),
+) -> "app.services.checkin_service.CheckInService":
+    from app.services.checkin_service import CheckInService
+    from app.services.notification_service import NotificationService, EmailChannel, SMSChannel, WebSocketChannel
+    from app.db.base import AsyncSessionLocal
+    
+    notification_svc = NotificationService([
+        EmailChannel(), 
+        SMSChannel(), 
+        WebSocketChannel(redis)
+    ])
+    return CheckInService(
+        redis=redis,
+        session_factory=AsyncSessionLocal,
+        notification_svc=notification_svc
+    )
+
+def get_catalogue_service(
+    db: AsyncSession = Depends(get_db),
+    redis=Depends(get_redis),
+) -> "app.services.catalogue_service.CatalogueService":
+    from app.services.catalogue_service import CatalogueService
+    return CatalogueService(session=db, redis=redis)

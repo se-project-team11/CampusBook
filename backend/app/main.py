@@ -13,11 +13,27 @@ from app.db.base import engine
 from app.routes.bookings import router as bookings_router
 
 
+from app.websocket.hub import hub
+from app.dependencies import get_checkin_service, get_redis
+import asyncio
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("CampusBook API starting...")
+    
+    # Start BE2 background listeners
+    redis = get_redis()
+    checkin_svc = get_checkin_service(redis)
+    
+    # Fire and forget tasks
+    ttl_task = asyncio.create_task(checkin_svc.start_ttl_listener())
+    ws_task = asyncio.create_task(hub.start_redis_listener())
+    
     yield
+    
     print("CampusBook API shutting down...")
+    ttl_task.cancel()
+    ws_task.cancel()
     await engine.dispose()
 
 
@@ -43,9 +59,9 @@ app.add_middleware(
 # Register routers
 app.include_router(bookings_router)
 
-# BE2 routers — uncomment when BE2 delivers their routes
-# from app.routes.resources import router as resources_router
-# app.include_router(resources_router)
+# Register BE2 routers
+from app.routes.resources import router as resources_router
+app.include_router(resources_router)
 
 
 @app.get("/health", tags=["ops"])
