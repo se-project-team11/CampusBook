@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AxiosError } from 'axios';
 import type { AvailabilitySlot, Resource } from '../types';
@@ -28,6 +28,20 @@ export function BookingForm({ resource, slot, onClose }: Props) {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeCount, setActiveCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    apiClient.bookings.myBookings()
+      .then(res => {
+        const count = res.data.bookings.filter(
+          b => ['CONFIRMED', 'CHECKED_IN'].includes(b.state),
+        ).length;
+        setActiveCount(count);
+      })
+      .catch(() => setActiveCount(0)); // fail open — don't block booking on fetch error
+  }, []);
+
+  const atLimit = activeCount !== null && activeCount >= 3;
 
   const handleBook = async () => {
     setLoading(true);
@@ -96,8 +110,14 @@ export function BookingForm({ resource, slot, onClose }: Props) {
           </div>
 
           <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-            ⏱ You must scan your QR code within <strong>15 minutes</strong> of your slot start or it will be released.
+            ⏱ You must scan your QR code within <strong>5 minutes</strong> of your slot start or it will be released.
           </div>
+
+          {atLimit && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-3 text-sm text-orange-700">
+              <strong>Booking limit reached.</strong> You already have 3 active bookings. Cancel one before making a new booking.
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
@@ -115,8 +135,8 @@ export function BookingForm({ resource, slot, onClose }: Props) {
           </button>
           <button
             onClick={handleBook}
-            disabled={loading}
-            className="flex-1 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-semibold px-4 py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
+            disabled={loading || atLimit}
+            className="flex-1 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-4 py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
           >
             {loading && <Spinner size="sm" color="white" />}
             {loading ? 'Booking…' : 'Confirm Booking'}
