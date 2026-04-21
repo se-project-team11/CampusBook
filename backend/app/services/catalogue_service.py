@@ -9,7 +9,7 @@ Cache keys:
   - availability:{resource_id}:{date}      -> List[TimeSlotAvailability]
 """
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -89,7 +89,7 @@ class CatalogueService:
 
         # Build 1-hour slots from 8 AM to 10 PM (14 slots)
         slots = []
-        day_start = datetime.combine(for_date, datetime.min.time()).replace(hour=8)
+        day_start = datetime.combine(for_date, datetime.min.time()).replace(hour=8, tzinfo=timezone.utc)
         
         for h in range(14):
             slot_start = day_start + timedelta(hours=h)
