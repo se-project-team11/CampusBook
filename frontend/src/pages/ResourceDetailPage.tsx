@@ -16,6 +16,12 @@ export function ResourceDetailPage() {
   const resource = location.state?.resource as Resource | undefined;
 
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
+  const [gridRefreshKey, setGridRefreshKey] = useState(0);
+
+  const closeForm = () => {
+    setSelectedSlot(null);
+    setGridRefreshKey(k => k + 1);
+  };
 
   if (!resource) {
     return (
@@ -62,7 +68,7 @@ export function ResourceDetailPage() {
 
       {/* Availability */}
       {canBook ? (
-        <AvailabilityGrid resource={resource} onBook={setSelectedSlot} />
+        <AvailabilityGrid resource={resource} onBook={setSelectedSlot} refreshKey={gridRefreshKey} />
       ) : (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 text-sm text-amber-800">
           Only students and faculty can book resources. You are logged in as <strong>{user?.role}</strong>.
@@ -74,7 +80,7 @@ export function ResourceDetailPage() {
         <BookingForm
           resource={resource}
           slot={selectedSlot}
-          onClose={() => setSelectedSlot(null)}
+          onClose={closeForm}
         />
       )}
     </div>
