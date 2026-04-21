@@ -42,7 +42,7 @@ class ResourceAdapter(ABC):
     """
 
     @abstractmethod
-    async def check_availability(self, slot: TimeSlot) -> bool:
+    async def check_availability(self, slot: TimeSlot, resource_id: UUID) -> bool:
         """Return True if the resource is available for the given time slot."""
         ...
 

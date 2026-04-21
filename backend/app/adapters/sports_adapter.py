@@ -28,11 +28,13 @@ class SportsAdapter(ResourceAdapter):
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def check_availability(self, slot: TimeSlot) -> bool:
-        """Check if any active booking exists for this slot."""
+    async def check_availability(self, slot: TimeSlot, resource_id: UUID) -> bool:
+        """Check if any active booking exists for this resource and slot."""
         result = await self._session.execute(
             select(BookingRow).where(
+                BookingRow.resource_id == resource_id,
                 BookingRow.slot_start == slot.start,
+                BookingRow.slot_end == slot.end,
                 BookingRow.state.notin_(["RELEASED", "NO_SHOW"]),
             )
         )

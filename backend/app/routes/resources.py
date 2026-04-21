@@ -40,7 +40,8 @@ async def get_availability(
     svc: CatalogueService = Depends(get_catalogue_service),
 ):
     """Get the 14-hour availability grid for a specific resource and date."""
-    return await svc.get_availability(resource_id, date)
+    slots = await svc.get_availability(resource_id, date)
+    return {"resource_id": str(resource_id), "date": date.isoformat(), "slots": slots}
 
 
 @router.post("/checkin/{qr_token}", summary="Check-in via QR code")
