@@ -13,7 +13,7 @@ All of that belongs in BookingService.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -43,6 +43,19 @@ class CreateBookingRequest(BaseModel):
     slot_start:  datetime
     slot_end:    datetime
     notes:       str = ""
+
+    @field_validator("slot_start", "slot_end", mode="before")
+    @classmethod
+    def ensure_utc(cls, v):
+        if isinstance(v, str):
+            dt = datetime.fromisoformat(v)
+        elif isinstance(v, datetime):
+            dt = v
+        else:
+            return v
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
 
     @field_validator("slot_end")
     @classmethod

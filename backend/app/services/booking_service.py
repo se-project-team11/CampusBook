@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, TYPE_CHECKING
 from uuid import UUID
 
@@ -157,7 +157,7 @@ class BookingService:
         # interface; it never knows whether it's talking to a library API,
         # department portal, or sports complex system.
         adapter = await self._adapters.get_for_resource(resource_id)
-        if not await adapter.check_availability(slot):
+        if not await adapter.check_availability(slot, resource_id):
             raise SlotUnavailableError(resource_id, slot)
 
         # ── Step 2: STRATEGY — validate per resource type ───────────────────
@@ -183,7 +183,7 @@ class BookingService:
             .set_notes(notes)
             .requires_approval(validation.needs_approval)
             .set_qr_token(secrets.token_urlsafe(32))
-            .set_expires_at(datetime.utcnow() + timedelta(minutes=15))
+            .set_expires_at(datetime.now(timezone.utc) + timedelta(minutes=15))
             .build()
         )
 
@@ -209,25 +209,25 @@ class BookingService:
         # InMemoryBookingRepository.find_active_by_slot() for conflict detection.
         if db is not None:
             try:
-                async with db.begin():
-                    # Acquire row-level lock on any existing booking for this slot
-                    existing = await db.execute(
-                        select(BookingRow)
-                        .where(
-                            BookingRow.resource_id == resource_id,
-                            BookingRow.slot_start  == slot.start,
-                            BookingRow.slot_end    == slot.end,
-                            BookingRow.state.notin_(
-                                [BookingState.RELEASED.value, BookingState.NO_SHOW.value]
-                            ),
-                        )
-                        .with_for_update(nowait=True)
+                # Adapter/strategy queries above already autobegun a transaction on this
+                # session, so db.begin() would raise InvalidRequestError. We execute the
+                # FOR UPDATE NOWAIT lock check directly within the active transaction.
+                existing = await db.execute(
+                    select(BookingRow)
+                    .where(
+                        BookingRow.resource_id == resource_id,
+                        BookingRow.slot_start  == slot.start,
+                        BookingRow.slot_end    == slot.end,
+                        BookingRow.state.notin_(
+                            [BookingState.RELEASED.value, BookingState.NO_SHOW.value]
+                        ),
                     )
-                    if existing.scalar_one_or_none() is not None:
-                        raise ConcurrentBookingError()
+                    .with_for_update(nowait=True)
+                )
+                if existing.scalar_one_or_none() is not None:
+                    raise ConcurrentBookingError()
 
-                    await self._repo.save(booking, db)
-                # ── COMMIT ─── lock released here
+                await self._repo.save(booking, db)
             except OperationalError:
                 # SQLAlchemy raises OperationalError when NOWAIT lock cannot be acquired.
                 # This means another transaction is currently inserting the same slot.

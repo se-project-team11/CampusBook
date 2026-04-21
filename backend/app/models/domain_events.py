@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 
@@ -15,7 +15,7 @@ class DomainEvent:
     Pattern: Domain Events (Evans DDD) — decouples NotificationService from
     BookingService. BookingService emits; NotificationService observes.
     """
-    occurred_at: datetime = field(default_factory=datetime.utcnow)
+    occurred_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> dict:
         raise NotImplementedError(
