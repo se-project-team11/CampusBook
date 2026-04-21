@@ -2,8 +2,15 @@ import axios, { AxiosError } from 'axios';
 import type { AxiosInstance } from 'axios';
 import type { AvailabilityResponse, Booking, Resource, UserBookingsResponse } from '../types';
 
-// Auth uses a separate no-baseURL instance so /auth/token hits the Vite proxy correctly
 const authHttp = axios.create();
+
+// Maps login page account keys → emails that trigger the right role on the backend
+const ACCOUNT_EMAILS: Record<string, string> = {
+  student:  'student@campus.edu',
+  faculty:  'faculty@campus.edu',
+  admin:    'admin@campus.edu',
+  staff:    'facilities@campus.edu',
+};
 
 function createAxiosInstance(): AxiosInstance {
   const instance = axios.create({ baseURL: '/api' });
@@ -40,14 +47,14 @@ export const apiClient = {
   auth: {
     login: (account: string) =>
       authHttp.post<{ access_token: string; role: string; email: string; user_id: string }>(
-        '/auth/token',
-        { account },
+        '/api/auth/login',
+        { email: ACCOUNT_EMAILS[account] ?? `${account}@campus.edu`, password: 'secret123' },
       ),
   },
 
   resources: {
     search: (params?: { type?: string; capacity?: number; location?: string }) =>
-      http.get<Resource[]>('/resources/', { params }),
+      http.get<Resource[]>('/resources', { params }),
 
     availability: (resourceId: string, date: string) =>
       http.get<AvailabilityResponse>(`/resources/${resourceId}/availability`, {

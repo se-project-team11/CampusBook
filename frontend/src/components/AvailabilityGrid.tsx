@@ -6,6 +6,7 @@ import { Spinner } from './ui/Spinner';
 interface Props {
   resource: Resource;
   onBook: (slot: AvailabilitySlot) => void;
+  refreshKey?: number;
 }
 
 function formatTime(iso: string) {
@@ -16,7 +17,7 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function AvailabilityGrid({ resource, onBook }: Props) {
+export function AvailabilityGrid({ resource, onBook, refreshKey = 0 }: Props) {
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
   const [loading, setLoading] = useState(false);
@@ -35,7 +36,7 @@ export function AvailabilityGrid({ resource, onBook }: Props) {
     }
   };
 
-  useEffect(() => { loadAvailability(); }, [resource.id, selectedDate]);
+  useEffect(() => { loadAvailability(); }, [resource.id, selectedDate, refreshKey]);
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5">
