@@ -103,7 +103,7 @@ function HistoryRow({ booking, resourceName }: { booking: Booking; resourceName?
       <div>
         {resourceName && <p className="text-sm font-semibold text-gray-900">{resourceName}</p>}
         <p className={`text-sm ${resourceName ? 'text-gray-500' : 'font-medium text-gray-900'}`}>{t1} – {t2}</p>
-        <p className="text-xs text-gray-400 mt-0.5">{date} · <span className="font-mono">#{booking.booking_id.slice(0, 8).toUpperCase()}</span></p>
+        <p className="text-xs text-gray-400 mt-0.5">{date}</p>
       </div>
       <Badge label={booking.state} />
     </div>

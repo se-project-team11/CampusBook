@@ -24,7 +24,14 @@ export function ActiveBookingCard({ booking, resourceName, onCancelled }: Props)
   const navigate = useNavigate();
   const [cancelling, setCancelling] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const { minutes, seconds, expired, totalMs } = useCountdown(booking.expires_at ?? '');
+  const slotMs       = new Date(booking.slot_start).getTime();
+  const windowEndIso = new Date(slotMs + 5 * 60_000).toISOString();
+  const { minutes, seconds, expired, totalMs } = useCountdown(windowEndIso);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
   const wasLiveRef = useRef(false);
   const didRefreshRef = useRef(false);
 
@@ -58,12 +65,12 @@ export function ActiveBookingCard({ booking, resourceName, onCancelled }: Props)
         <div className="min-w-0">
           {resourceName && <p className="font-semibold text-gray-900 text-sm truncate">{resourceName}</p>}
           <p className={`text-sm ${resourceName ? 'text-gray-500' : 'font-semibold text-gray-900'}`}>{time}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{date} · <span className="font-mono">#{booking.booking_id.slice(0, 8).toUpperCase()}</span></p>
+          <p className="text-xs text-gray-400 mt-0.5">{date}</p>
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
           <Badge label={booking.state} />
-          {booking.state === 'CONFIRMED' && booking.expires_at && !expired && (
+          {booking.state === 'CONFIRMED' && now >= slotMs - 5 * 60_000 && !expired && (
             <span className="text-xs font-mono text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
               {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
             </span>

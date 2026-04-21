@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import type { Booking, Resource } from '../types';
@@ -38,13 +39,12 @@ export function BookingConfirmation() {
               value={`${fmt(booking.slot_start)} – ${fmt(booking.slot_end)}`}
             />
           )}
-          <InfoRow label="Booking ID" value={booking.booking_id.slice(0, 8).toUpperCase()} />
           <InfoRow label="Status" value={booking.state} />
           {booking.notes && <InfoRow label="Notes" value={booking.notes} />}
         </div>
       </div>
 
-      {booking.expires_at && <CheckInTimer expiresAt={booking.expires_at} />}
+      {booking.slot_start && <CheckInTimer slotStart={booking.slot_start} />}
 
       {/* QR Code */}
       <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center mb-6">
@@ -59,9 +59,6 @@ export function BookingConfirmation() {
             fgColor="#1d4ed8"
           />
         </div>
-        <p className="text-xs text-gray-400 mt-3 font-mono break-all">
-          {booking.qr_token.slice(0, 24)}…
-        </p>
       </div>
 
       {/* Actions */}
@@ -83,27 +80,50 @@ export function BookingConfirmation() {
   );
 }
 
-function CheckInTimer({ expiresAt }: { expiresAt: string }) {
-  const { minutes, seconds, expired } = useCountdown(expiresAt);
+function CheckInTimer({ slotStart }: { slotStart: string }) {
+  const slotMs      = new Date(slotStart).getTime();
+  const windowStart = slotMs - 5 * 60_000;   // 5 min before slot
+  const windowEnd   = slotMs + 5 * 60_000;   // 5 min after slot
+  const windowEndIso = new Date(windowEnd).toISOString();
+
+  const { minutes, seconds, expired } = useCountdown(windowEndIso);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   if (expired) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 mb-6 text-center">
-        <p className="font-bold text-red-700">⚠️ Check-in window expired</p>
+        <p className="font-bold text-red-700">⚠️ Check-in window closed</p>
         <p className="text-red-600 text-sm mt-1">This booking has been released.</p>
       </div>
     );
   }
 
-  const urgent = minutes < 5;
+  if (now < windowStart) {
+    const minsUntil = Math.ceil((windowStart - now) / 60_000);
+    const opensAt = new Date(windowStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return (
+      <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 mb-6 text-center">
+        <p className="text-sm font-medium text-blue-700">⏰ Check-in opens at {opensAt}</p>
+        <p className="text-xs text-blue-500 mt-1">
+          ~{minsUntil} minute{minsUntil !== 1 ? 's' : ''} from now
+        </p>
+      </div>
+    );
+  }
+
+  const urgent = minutes < 2;
   return (
     <div className={`rounded-xl px-5 py-4 mb-6 text-center border ${urgent ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
-      <p className={`text-sm font-medium ${urgent ? 'text-red-700' : 'text-amber-800'}`}>⏱ Check in within</p>
+      <p className={`text-sm font-medium ${urgent ? 'text-red-700' : 'text-amber-800'}`}>⏱ Check in now</p>
       <p className={`text-4xl font-bold font-mono mt-1 ${urgent ? 'text-red-700' : 'text-amber-700'}`}>
         {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
       </p>
       <p className={`text-xs mt-1 ${urgent ? 'text-red-600' : 'text-amber-600'}`}>
-        Deadline: {new Date(/[Z+]/.test(expiresAt) ? expiresAt : expiresAt + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        Window closes at {new Date(windowEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
       </p>
     </div>
   );
