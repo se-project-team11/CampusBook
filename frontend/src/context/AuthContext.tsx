@@ -1,17 +1,19 @@
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AuthUser } from '../types';
+import type { AuthUser, UserRole } from '../types';
 
 interface AuthContextValue {
   user: AuthUser | null;
   login: (user: AuthUser) => void;
   logout: () => void;
+  isRole: (role: UserRole) => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   login: () => {},
   logout: () => {},
+  isRole: () => false,
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -36,7 +38,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('campusbook_user');
   };
 
-  return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>;
+  const isRole = (role: UserRole) => user?.role === role;
+
+  return (
+    <AuthContext.Provider value={{ user, login, logout, isRole }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

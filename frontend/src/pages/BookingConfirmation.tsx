@@ -18,19 +18,34 @@ export function BookingConfirmation() {
     );
   }
 
+  const isPendingApproval = booking.state === 'RESERVED';
+
   return (
     <div className="max-w-lg mx-auto px-4 py-8">
       <div className="text-center mb-8">
-        <div className="text-5xl mb-3">🎉</div>
-        <h1 className="text-3xl font-bold text-gray-900">Booking Confirmed!</h1>
-        <p className="text-gray-500 mt-2">Your QR code is ready for check-in</p>
+        {isPendingApproval ? (
+          <>
+            <div className="text-5xl mb-3">⏳</div>
+            <h1 className="text-3xl font-bold text-gray-900">Awaiting Approval</h1>
+            <p className="text-gray-500 mt-2">
+              Your request has been submitted and is pending dept-admin sign-off.
+              You will be able to check in once it's approved.
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="text-5xl mb-3">🎉</div>
+            <h1 className="text-3xl font-bold text-gray-900">Booking Confirmed!</h1>
+            <p className="text-gray-500 mt-2">Your QR code is ready for check-in</p>
+          </>
+        )}
       </div>
 
       {/* Booking details */}
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm mb-6">
-        <div className="bg-brand-600 text-white px-5 py-4">
+        <div className={`${isPendingApproval ? 'bg-amber-500' : 'bg-brand-600'} text-white px-5 py-4`}>
           <p className="font-bold text-lg">{resource?.name ?? 'Resource'}</p>
-          <p className="text-brand-100 text-sm">{resource?.location ?? ''}</p>
+          <p className="text-white/80 text-sm">{resource?.location ?? ''}</p>
         </div>
         <div className="p-5 space-y-3 text-sm">
           {booking.slot_start && (
@@ -44,22 +59,33 @@ export function BookingConfirmation() {
         </div>
       </div>
 
-      {booking.slot_start && <CheckInTimer slotStart={booking.slot_start} />}
-
-      {/* QR Code */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center mb-6">
-        <p className="text-sm font-medium text-gray-700 mb-4">Scan at the venue to check in</p>
-        <div className="flex justify-center">
-          <QRCodeSVG
-            value={booking.qr_token}
-            size={220}
-            level="M"
-            marginSize={4}
-            bgColor="#ffffff"
-            fgColor="#1d4ed8"
-          />
+      {/* Pending approval notice — no QR until approved */}
+      {isPendingApproval ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 mb-6 text-center">
+          <p className="font-semibold text-amber-800">Approval required</p>
+          <p className="text-amber-700 text-sm mt-1">
+            A dept admin must approve this booking. Check back in <strong>My Bookings</strong> —
+            once approved you'll see your QR code there.
+          </p>
         </div>
-      </div>
+      ) : (
+        <>
+          {booking.slot_start && <CheckInTimer slotStart={booking.slot_start} />}
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center mb-6">
+            <p className="text-sm font-medium text-gray-700 mb-4">Scan at the venue to check in</p>
+            <div className="flex justify-center">
+              <QRCodeSVG
+                value={booking.qr_token}
+                size={220}
+                level="M"
+                marginSize={4}
+                bgColor="#ffffff"
+                fgColor="#1d4ed8"
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Actions */}
       <div className="flex gap-3">

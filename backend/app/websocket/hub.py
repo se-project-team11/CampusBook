@@ -8,6 +8,7 @@ This bridges the gap between horizontal FastAPI instances.
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
 from fastapi import WebSocket
@@ -45,7 +46,9 @@ class WebSocketHub:
         """Send message to all websockets watching a specific resource."""
         if resource_id not in self._rooms:
             return
-            
+
+        message.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
+
         dead_connections = set()
         for ws in self._rooms[resource_id]:
             try:

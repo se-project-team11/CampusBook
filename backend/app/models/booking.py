@@ -46,6 +46,7 @@ class Booking:
     state:            BookingState = BookingState.RESERVED
     qr_token:         Optional[str] = None
     requires_approval: bool = False
+    user_email:       str = ""
     notes:            str = ""
     created_at:       Optional[datetime] = None
     expires_at:       Optional[datetime] = None

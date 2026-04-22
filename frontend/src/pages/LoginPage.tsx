@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Spinner } from '../components/ui/Spinner';
+import type { UserRole } from '../types';
 
 const ACCOUNTS = [
   { key: 'student', label: 'Student',          role: 'ROLE_STUDENT',    desc: 'Search & book resources' },
@@ -24,7 +25,7 @@ export function LoginPage() {
       const res = await apiClient.auth.login(account);
       login({
         id: res.data.user_id,
-        role: res.data.role,
+        role: res.data.role as UserRole,
         email: res.data.email,
         token: res.data.access_token,
       });

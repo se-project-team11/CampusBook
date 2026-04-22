@@ -75,6 +75,23 @@ class CatalogueService:
         await self._redis.set(cache_key, json.dumps(data), ex=self.CACHE_TTL)
         return data
 
+    async def get_resource_by_id(self, resource_id: UUID) -> Optional[Dict[str, Any]]:
+        """Fetch a single resource by ID. Returns None if not found."""
+        result = await self._session.execute(
+            select(ResourceRow).where(ResourceRow.id == resource_id)
+        )
+        r = result.scalar_one_or_none()
+        if r is None:
+            return None
+        return {
+            "id": str(r.id),
+            "name": r.name,
+            "type": r.type,
+            "capacity": r.capacity,
+            "location": r.location,
+            "amenities": r.amenities or [],
+        }
+
     async def get_availability(
         self, resource_id: UUID, for_date: date
     ) -> List[Dict[str, Any]]:

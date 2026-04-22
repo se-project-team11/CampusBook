@@ -67,3 +67,13 @@ class BookingRepository(ABC):
         Must be called after the in-memory transition to keep DB in sync.
         """
         ...
+
+    @abstractmethod
+    async def find_pending_approvals(self) -> List[Booking]:
+        """Return all bookings in RESERVED state that require approval, newest first."""
+        ...
+
+    @abstractmethod
+    async def find_active_bookings(self) -> List[Booking]:
+        """Return all CONFIRMED and CHECKED_IN bookings, ordered by slot_start asc."""
+        ...

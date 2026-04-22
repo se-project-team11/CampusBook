@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { AxiosInstance } from 'axios';
-import type { AvailabilityResponse, Booking, Resource, UserBookingsResponse } from '../types';
+import type { ActiveBookingOverview, AvailabilityResponse, Booking, Resource, UserBookingsResponse, WaitlistEntry } from '../types';
 
 const authHttp = axios.create();
 
@@ -56,6 +56,9 @@ export const apiClient = {
     search: (params?: { type?: string; capacity?: number; location?: string }) =>
       http.get<Resource[]>('/resources', { params }),
 
+    getById: (resourceId: string) =>
+      http.get<Resource>(`/resources/${resourceId}`),
+
     availability: (resourceId: string, date: string) =>
       http.get<AvailabilityResponse>(`/resources/${resourceId}/availability`, {
         params: { date },
@@ -75,5 +78,23 @@ export const apiClient = {
 
   checkin: {
     checkin: (qrToken: string) => http.post(`/checkin/${qrToken}`, {}),
+  },
+
+  admin: {
+    pendingApprovals: () => http.get<UserBookingsResponse>('/bookings/pending-approval'),
+    approve: (bookingId: string) => http.patch<Booking>(`/bookings/${bookingId}/approve`),
+    reject: (bookingId: string) => http.patch(`/bookings/${bookingId}/reject`),
+    roomOverview: () => http.get<{ bookings: ActiveBookingOverview[] }>('/admin/room-overview'),
+  },
+
+  waitlist: {
+    join: (resource_id: string, slot_start: string, slot_end: string) =>
+      http.post<WaitlistEntry>('/waitlist', { resource_id, slot_start, slot_end }),
+    mine: () => http.get<{ entries: WaitlistEntry[] }>('/waitlist/me'),
+  },
+
+  analytics: {
+    utilization: () => http.get<{ resources: object[] }>('/analytics/utilization'),
+    heatmap: () => http.get<{ cells: number[][]; peak: number }>('/analytics/heatmap'),
   },
 };
