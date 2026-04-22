@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import List, Optional
 from uuid import UUID
 
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +40,7 @@ class PostgresBookingRepository(BookingRepository):
             state=booking.state.value,
             qr_token=booking.qr_token,
             requires_approval=booking.requires_approval,
+            user_email=booking.user_email,
             notes=booking.notes,
             expires_at=booking.expires_at,
         )
@@ -89,6 +92,30 @@ class PostgresBookingRepository(BookingRepository):
             .values(state=new_state)
         )
 
+    async def find_active_bookings(self) -> List[Booking]:
+        """Return CONFIRMED and CHECKED_IN bookings with slot_end in the future."""
+        now = datetime.now(timezone.utc)
+        result = await self._session.execute(
+            select(BookingRow)
+            .where(
+                BookingRow.state.in_([BookingState.CONFIRMED.value, BookingState.CHECKED_IN.value]),
+                BookingRow.slot_end >= now,
+            )
+            .order_by(BookingRow.slot_start.asc())
+        )
+        return [self._to_domain(r) for r in result.scalars().all()]
+
+    async def find_pending_approvals(self) -> List[Booking]:
+        result = await self._session.execute(
+            select(BookingRow)
+            .where(
+                BookingRow.requires_approval == True,
+                BookingRow.state == BookingState.RESERVED.value,
+            )
+            .order_by(BookingRow.created_at.desc())
+        )
+        return [self._to_domain(r) for r in result.scalars().all()]
+
     # ── Private helpers ──────────────────────────────────────────────────────
 
     @staticmethod
@@ -103,6 +130,7 @@ class PostgresBookingRepository(BookingRepository):
             state=BookingState(row.state),
             qr_token=row.qr_token,
             requires_approval=row.requires_approval,
+            user_email=row.user_email or "",
             notes=row.notes or "",
             expires_at=row.expires_at,
         )

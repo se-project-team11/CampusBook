@@ -24,6 +24,5 @@ class SeminarValidationStrategy(ValidationStrategy):
             return ValidationResult(
                 ok=False, reason="Seminar hall bookings cannot exceed 8 hours"
             )
-        # In prototype: faculty check is stubbed (no approval needed)
-        # In production: would verify user role is ROLE_FACULTY
-        return ValidationResult(ok=True, needs_approval=False)
+        # Seminar halls always require dept-admin approval before confirmation.
+        return ValidationResult(ok=True, needs_approval=True)

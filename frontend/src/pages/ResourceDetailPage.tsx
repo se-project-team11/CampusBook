@@ -1,9 +1,11 @@
-import { useState } from 'react';
-import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useLocation, useNavigate, useParams, Link } from 'react-router-dom';
 import type { AvailabilitySlot, Resource } from '../types';
 import { AvailabilityGrid } from '../components/AvailabilityGrid';
 import { BookingForm } from '../components/BookingForm';
 import { useAuth } from '../context/AuthContext';
+import { apiClient } from '../services/api';
+import { Spinner } from '../components/ui/Spinner';
 
 const typeIcons: Record<string, string> = {
   STUDY_ROOM: '📚', LAB: '🔬', SPORTS: '⚽', SEMINAR: '🎓',
@@ -12,18 +14,33 @@ const typeIcons: Record<string, string> = {
 export function ResourceDetailPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { id: paramId } = useParams<{ id: string }>();
   const { user } = useAuth();
-  const resource = location.state?.resource as Resource | undefined;
 
+  const [resource, setResource] = useState<Resource | undefined>(
+    location.state?.resource as Resource | undefined,
+  );
+  const [fetchError, setFetchError] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
   const [gridRefreshKey, setGridRefreshKey] = useState(0);
+
+  useEffect(() => {
+    if (resource || !paramId) return;
+    apiClient.resources.getById(paramId)
+      .then(res => setResource(res.data))
+      .catch(() => setFetchError(true));
+  }, [paramId, resource]);
 
   const closeForm = () => {
     setSelectedSlot(null);
     setGridRefreshKey(k => k + 1);
   };
 
-  if (!resource) {
+  if (!resource && !fetchError) {
+    return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
+  }
+
+  if (!resource || fetchError) {
     return (
       <div className="max-w-2xl mx-auto text-center py-20">
         <p className="text-gray-500 mb-4">Resource not found.</p>

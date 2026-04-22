@@ -39,6 +39,7 @@ class BookingBuilder:
         self._slot:               Optional[TimeSlot] = None
         self._notes:              str                = ""
         self._requires_approval:  bool               = False
+        self._user_email:         str                = ""
         self._qr_token:           Optional[str]      = None
         self._expires_at:         Optional[datetime] = None
 
@@ -60,6 +61,10 @@ class BookingBuilder:
 
     def set_notes(self, notes: str) -> "BookingBuilder":
         self._notes = notes
+        return self
+
+    def set_user_email(self, email: str) -> "BookingBuilder":
+        self._user_email = email
         return self
 
     def requires_approval(self, flag: bool) -> "BookingBuilder":
@@ -103,6 +108,7 @@ class BookingBuilder:
             state=BookingState.RESERVED,
             qr_token=qr_token,
             requires_approval=self._requires_approval,
+            user_email=self._user_email,
             notes=self._notes,
             created_at=datetime.utcnow(),
             expires_at=expires_at,

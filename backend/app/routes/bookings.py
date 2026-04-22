@@ -66,14 +66,15 @@ class CreateBookingRequest(BaseModel):
 
 
 class BookingResponse(BaseModel):
-    booking_id:  UUID
-    resource_id: UUID
-    state:       str
-    qr_token:    str
-    expires_at:  datetime
-    slot_start:  datetime
-    slot_end:    datetime
-    notes:       str
+    booking_id:        UUID
+    resource_id:       UUID
+    state:             str
+    qr_token:          str
+    expires_at:        datetime
+    slot_start:        datetime
+    slot_end:          datetime
+    notes:             str
+    requires_approval: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -112,6 +113,7 @@ async def create_booking(
             resource_id=req.resource_id,
             slot=slot,
             notes=req.notes,
+            user_email=user.email,
         )
         return BookingResponse(
             booking_id=booking.id,
@@ -122,6 +124,7 @@ async def create_booking(
             slot_start=booking.slot_start,
             slot_end=booking.slot_end,
             notes=booking.notes,
+            requires_approval=booking.requires_approval,
         )
     except SlotUnavailableError:
         raise HTTPException(
@@ -167,6 +170,38 @@ async def get_my_bookings(
                 slot_start=b.slot_start,
                 slot_end=b.slot_end,
                 notes=b.notes,
+                requires_approval=b.requires_approval,
+            )
+            for b in bookings
+        ]
+    )
+
+
+# IMPORTANT: /pending-approval must be registered BEFORE /{booking_id} so
+# FastAPI doesn't try to parse the literal string as a UUID first.
+@router.get(
+    "/pending-approval",
+    response_model=UserBookingsResponse,
+    summary="List bookings pending dept-admin approval",
+)
+async def list_pending_approvals(
+    user: AuthUser       = Depends(require_roles(["ROLE_DEPT_ADMIN"])),
+    svc:  BookingService = Depends(get_booking_service),
+):
+    """Returns all RESERVED bookings that require approval. ROLE_DEPT_ADMIN only."""
+    bookings = await svc.get_pending_approvals()
+    return UserBookingsResponse(
+        bookings=[
+            BookingResponse(
+                booking_id=b.id,
+                resource_id=b.resource_id,
+                state=b.state.value,
+                qr_token=b.qr_token or "",
+                expires_at=b.expires_at or datetime.utcnow(),
+                slot_start=b.slot_start,
+                slot_end=b.slot_end,
+                notes=b.notes,
+                requires_approval=b.requires_approval,
             )
             for b in bookings
         ]
@@ -206,12 +241,58 @@ async def get_booking(
             slot_start=booking.slot_start,
             slot_end=booking.slot_end,
             notes=booking.notes,
+            requires_approval=booking.requires_approval,
         )
     except BookingNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Booking {booking_id} not found.",
         )
+
+
+@router.patch(
+    "/{booking_id}/approve",
+    response_model=BookingResponse,
+    summary="Approve a pending booking",
+)
+async def approve_booking(
+    booking_id: UUID,
+    user: AuthUser       = Depends(require_roles(["ROLE_DEPT_ADMIN"])),
+    svc:  BookingService = Depends(get_booking_service),
+):
+    """Transitions a RESERVED booking to CONFIRMED. ROLE_DEPT_ADMIN only."""
+    try:
+        booking = await svc.approve_booking(booking_id)
+        return BookingResponse(
+            booking_id=booking.id,
+            resource_id=booking.resource_id,
+            state=booking.state.value,
+            qr_token=booking.qr_token or "",
+            expires_at=booking.expires_at or datetime.utcnow(),
+            slot_start=booking.slot_start,
+            slot_end=booking.slot_end,
+            notes=booking.notes,
+            requires_approval=booking.requires_approval,
+        )
+    except BookingNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Booking {booking_id} not found.")
+
+
+@router.patch(
+    "/{booking_id}/reject",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Reject a pending booking",
+)
+async def reject_booking(
+    booking_id: UUID,
+    user: AuthUser       = Depends(require_roles(["ROLE_DEPT_ADMIN"])),
+    svc:  BookingService = Depends(get_booking_service),
+):
+    """Transitions a RESERVED booking to RELEASED. ROLE_DEPT_ADMIN only."""
+    try:
+        await svc.reject_booking(booking_id)
+    except BookingNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Booking {booking_id} not found.")
 
 
 @router.delete(

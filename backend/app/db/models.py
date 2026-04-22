@@ -41,6 +41,7 @@ class BookingRow(Base):
     state             = Column(String(20), nullable=False, server_default=text("'RESERVED'"))
     qr_token          = Column(String(100), unique=True, nullable=True)
     requires_approval = Column(Boolean, nullable=False, server_default=text("false"))
+    user_email        = Column(String(255), nullable=True)
     notes             = Column(Text, nullable=False, server_default=text("''"))
     created_at        = Column(DateTime(timezone=True), nullable=False, server_default=text("NOW()"))
     expires_at        = Column(DateTime(timezone=True), nullable=True)

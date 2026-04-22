@@ -130,6 +130,7 @@ class BookingService:
         resource_id: UUID,
         slot: TimeSlot,
         notes: str = "",
+        user_email: str = "",
     ) -> Booking:
         """
         F1 end-to-end booking creation.
@@ -181,6 +182,7 @@ class BookingService:
             .set_resource(resource_id)
             .set_slot(slot)
             .set_notes(notes)
+            .set_user_email(user_email)
             .requires_approval(validation.needs_approval)
             .set_qr_token(secrets.token_urlsafe(32))
             .set_expires_at(datetime.now(timezone.utc) + timedelta(minutes=15))
@@ -241,12 +243,13 @@ class BookingService:
                 raise ConcurrentBookingError()
             await self._repo.save(booking)
 
-        # ── Step 5: STATE MACHINE — RESERVED → CONFIRMED ────────────────────
-        # State Machine pattern: BookingStateMgr validates every transition.
-        # After this call, booking.state == CONFIRMED in memory.
-        # We then persist the state change to keep DB in sync.
-        self._state_mgr.transition(booking, BookingState.CONFIRMED)
-        await self._repo.update_state(booking.id, BookingState.CONFIRMED.value)
+        # ── Step 5: STATE MACHINE — RESERVED → CONFIRMED (if no approval needed) ──
+        # If the resource requires dept-admin approval, the booking stays in
+        # RESERVED state until an admin explicitly calls approve_booking().
+        # If no approval is needed, auto-confirm immediately.
+        if not booking.requires_approval:
+            self._state_mgr.transition(booking, BookingState.CONFIRMED)
+            await self._repo.update_state(booking.id, BookingState.CONFIRMED.value)
 
         # ── Step 6: DOMAIN EVENT — append to audit log ───────────────────────
         # Domain Events pattern: BookingCreated is the authoritative record
@@ -337,3 +340,35 @@ class BookingService:
     async def get_user_bookings(self, user_id: UUID) -> list[Booking]:
         """Return all bookings for a user, ordered newest first."""
         return await self._repo.find_by_user(user_id)
+
+    async def get_pending_approvals(self) -> list[Booking]:
+        """Return all RESERVED bookings awaiting dept-admin approval."""
+        return await self._repo.find_pending_approvals()
+
+    async def get_active_bookings(self) -> list[Booking]:
+        """Return all CONFIRMED and CHECKED_IN bookings for admin room overview."""
+        return await self._repo.find_active_bookings()
+
+    async def approve_booking(self, booking_id: UUID) -> Booking:
+        """
+        Approve a RESERVED booking — transitions to CONFIRMED.
+        Only meaningful when requires_approval=True.
+        """
+        booking = await self._repo.find_by_id(booking_id)
+        if booking is None:
+            raise BookingNotFoundError(booking_id)
+        self._state_mgr.transition(booking, BookingState.CONFIRMED)
+        await self._repo.update_state(booking_id, BookingState.CONFIRMED.value)
+        return booking
+
+    async def reject_booking(self, booking_id: UUID) -> None:
+        """
+        Reject a RESERVED booking — transitions to RELEASED.
+        Cleans up Redis TTL key so no-show workflow doesn't fire.
+        """
+        booking = await self._repo.find_by_id(booking_id)
+        if booking is None:
+            raise BookingNotFoundError(booking_id)
+        self._state_mgr.transition(booking, BookingState.RELEASED)
+        await self._repo.update_state(booking_id, BookingState.RELEASED.value)
+        await self._redis.delete(f"booking_ttl:{booking_id}")
