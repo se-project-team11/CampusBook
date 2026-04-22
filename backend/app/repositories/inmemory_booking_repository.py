@@ -45,6 +45,21 @@ class InMemoryBookingRepository(BookingRepository):
     async def find_by_user(self, user_id: UUID) -> List[Booking]:
         return [b for b in self._store.values() if b.user_id == user_id]
 
+    async def find_active_bookings(self) -> List[Booking]:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        return [
+            b for b in self._store.values()
+            if b.state in (BookingState.CONFIRMED, BookingState.CHECKED_IN)
+            and b.slot_end > now
+        ]
+
+    async def find_pending_approvals(self) -> List[Booking]:
+        return [
+            b for b in self._store.values()
+            if b.state == BookingState.RESERVED and getattr(b, 'requires_approval', False)
+        ]
+
     async def update_state(
         self, booking_id: UUID, new_state: str, db=None
     ) -> None:
