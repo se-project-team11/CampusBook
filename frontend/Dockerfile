@@ -13,5 +13,4 @@ COPY . .
 EXPOSE 5173
 
 # Run Vite development server
-# --host ensures it listens on all interfaces so it's accessible outside the container
 CMD ["npm", "run", "dev", "--", "--host"]

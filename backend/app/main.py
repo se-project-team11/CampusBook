@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
 
 from app.db.base import engine
 from app.routes.auth import router as auth_router
@@ -15,16 +16,15 @@ from app.routes.bookings import router as bookings_router
 from app.routes.checkin import router as checkin_router
 from app.routes.resources import router as resources_router
 
-
 from app.websocket.hub import hub
 from app.dependencies import get_checkin_service, get_redis
-import asyncio
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("CampusBook API starting...")
     
-    # Start BE2 background listeners
+    # Start background listeners
     redis = get_redis()
     checkin_svc = get_checkin_service(redis)
     
@@ -50,7 +50,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow React dev server (FE1/FE2) and Vite dev server (FE3)
+# CORS - allow React dev server and Vite dev server
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173"],
@@ -62,9 +62,6 @@ app.add_middleware(
 # Register routers
 app.include_router(auth_router)
 app.include_router(bookings_router)
-
-# Register BE2 routers
-from app.routes.resources import router as resources_router
 app.include_router(resources_router)
 
 

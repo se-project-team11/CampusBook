@@ -36,10 +36,10 @@ class BookingStateMgr:
       RESERVED   → CONFIRMED  (validation passes, QR issued)
       RESERVED   → RELEASED   (validation fails or user cancels before confirm)
       CONFIRMED  → CHECKED_IN (user scans QR within 15 min window)
-      CONFIRMED  → NO_SHOW    (Redis TTL expires, triggered by CheckInService/BE2)
+      CONFIRMED  → NO_SHOW    (Redis TTL expires, triggered by CheckInService)
       CONFIRMED  → RELEASED   (user cancels confirmed booking)
       CHECKED_IN → RELEASED   (session ends / checkout)
-      NO_SHOW    → RELEASED   (auto-release workflow, triggered by CheckInService/BE2)
+      NO_SHOW    → RELEASED   (auto-release workflow, triggered by CheckInService)
       RELEASED   → (terminal, no further transitions)
     """
 

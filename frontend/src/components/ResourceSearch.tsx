@@ -1,20 +1,22 @@
 import { useState, useEffect } from 'react';
 import type { Resource } from '../types';
 import { apiClient } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { ResourceCard } from './ResourceCard';
 import { Spinner } from './ui/Spinner';
 
-const RESOURCE_TYPES = ['STUDY_ROOM', 'LAB', 'SPORTS', 'SEMINAR'];
+const RESTRICTED_TYPES: Record<string, string[]> = {
+  ROLE_STUDENT: ['STUDY_ROOM', 'LAB', 'SPORTS'],
+  ROLE_FACULTY: ['SEMINAR', 'LAB'],
+};
 
-interface Props {
-  onSelect: (resource: Resource) => void;
-}
-
-export function ResourceSearch({ onSelect }: Props) {
+export function ResourceSearch({ onSelect }: { onSelect: (resource: Resource) => void }) {
+  const { user } = useAuth();
   const [resources, setResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const userTypes = user ? RESTRICTED_TYPES[user.role] ?? [] : [];
   const [typeFilter, setTypeFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
   const [capacityFilter, setCapacityFilter] = useState('');
@@ -28,7 +30,11 @@ export function ResourceSearch({ onSelect }: Props) {
         location: locationFilter || undefined,
         capacity: capacityFilter ? parseInt(capacityFilter) : undefined,
       });
-      setResources(res.data);
+      const allowedTypes = new Set(userTypes);
+      const filtered = userTypes.length > 0
+        ? res.data.filter(r => allowedTypes.has(r.type))
+        : res.data;
+      setResources(filtered);
     } catch {
       setError('Failed to load resources. Is the API running?');
     } finally {
@@ -52,7 +58,7 @@ export function ResourceSearch({ onSelect }: Props) {
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 bg-white"
           >
             <option value="">All Types</option>
-            {RESOURCE_TYPES.map(t => (
+            {userTypes.map(t => (
               <option key={t} value={t}>{t.replace('_', ' ')}</option>
             ))}
           </select>

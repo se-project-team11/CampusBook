@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.auth.middleware import create_dev_token
-from app.dependencies import get_booking_service
+from app.dependencies import get_booking_service, get_catalogue_service, get_db
 from app.main import app
 from app.models.booking import Booking, BookingState
 from app.models.time_slot import TimeSlot
@@ -67,6 +67,22 @@ def make_mock_service(booking: Booking = None) -> AsyncMock:
     return svc
 
 
+def make_mock_catalogue() -> AsyncMock:
+    svc = AsyncMock()
+    svc.get_resource_by_id.return_value = {
+        "id": str(RESOURCE_ID),
+        "type": "STUDY_ROOM",
+        "name": "Test Room",
+        "location": "Test Location",
+    }
+    return svc
+
+
+def make_mock_db() -> AsyncMock:
+    """Mock async database session."""
+    return AsyncMock()
+
+
 def make_headers(role: str, user_id: uuid.UUID = None) -> dict:
     uid   = user_id or USER_ID
     token = create_dev_token(uid, role, "user@campus.edu")
@@ -93,7 +109,10 @@ class TestCreateBookingRoute:
 
     def test_create_booking_returns_201(self):
         mock_svc = make_mock_service()
+        mock_cat = make_mock_catalogue()
         app.dependency_overrides[get_booking_service] = lambda: mock_svc
+        app.dependency_overrides[get_catalogue_service] = lambda: mock_cat
+        app.dependency_overrides[get_db] = make_mock_db
         client = TestClient(app, raise_server_exceptions=False)
 
         resp = client.post(
@@ -106,7 +125,10 @@ class TestCreateBookingRoute:
 
     def test_create_booking_response_contains_qr_token(self):
         mock_svc = make_mock_service()
+        mock_cat = make_mock_catalogue()
         app.dependency_overrides[get_booking_service] = lambda: mock_svc
+        app.dependency_overrides[get_catalogue_service] = lambda: mock_cat
+        app.dependency_overrides[get_db] = make_mock_db
         client = TestClient(app, raise_server_exceptions=False)
 
         resp = client.post(
@@ -119,7 +141,10 @@ class TestCreateBookingRoute:
 
     def test_create_booking_response_state_confirmed(self):
         mock_svc = make_mock_service()
+        mock_cat = make_mock_catalogue()
         app.dependency_overrides[get_booking_service] = lambda: mock_svc
+        app.dependency_overrides[get_catalogue_service] = lambda: mock_cat
+        app.dependency_overrides[get_db] = make_mock_db
         client = TestClient(app, raise_server_exceptions=False)
 
         resp = client.post(
@@ -132,7 +157,16 @@ class TestCreateBookingRoute:
 
     def test_faculty_can_create_booking(self):
         mock_svc = make_mock_service()
+        mock_cat = make_mock_catalogue()
+        mock_cat.get_resource_by_id.return_value = {
+            "id": str(RESOURCE_ID),
+            "type": "SEMINAR",
+            "name": "Test Hall",
+            "location": "Test Location",
+        }
         app.dependency_overrides[get_booking_service] = lambda: mock_svc
+        app.dependency_overrides[get_catalogue_service] = lambda: mock_cat
+        app.dependency_overrides[get_db] = make_mock_db
         client = TestClient(app, raise_server_exceptions=False)
 
         resp = client.post(
@@ -167,7 +201,10 @@ class TestCreateBookingRoute:
         mock_svc.create_booking.side_effect = SlotUnavailableError(
             RESOURCE_ID, TimeSlot(SLOT_START, SLOT_END)
         )
+        mock_cat = make_mock_catalogue()
         app.dependency_overrides[get_booking_service] = lambda: mock_svc
+        app.dependency_overrides[get_catalogue_service] = lambda: mock_cat
+        app.dependency_overrides[get_db] = make_mock_db
         client = TestClient(app, raise_server_exceptions=False)
 
         resp = client.post(
@@ -181,7 +218,10 @@ class TestCreateBookingRoute:
     def test_concurrent_booking_returns_409(self):
         mock_svc = make_mock_service()
         mock_svc.create_booking.side_effect = ConcurrentBookingError()
+        mock_cat = make_mock_catalogue()
         app.dependency_overrides[get_booking_service] = lambda: mock_svc
+        app.dependency_overrides[get_catalogue_service] = lambda: mock_cat
+        app.dependency_overrides[get_db] = make_mock_db
         client = TestClient(app, raise_server_exceptions=False)
 
         resp = client.post(
@@ -195,7 +235,10 @@ class TestCreateBookingRoute:
     def test_validation_failure_returns_422(self):
         mock_svc = make_mock_service()
         mock_svc.create_booking.side_effect = BookingValidationError("Lab bookings max 3 hours")
+        mock_cat = make_mock_catalogue()
         app.dependency_overrides[get_booking_service] = lambda: mock_svc
+        app.dependency_overrides[get_catalogue_service] = lambda: mock_cat
+        app.dependency_overrides[get_db] = make_mock_db
         client = TestClient(app, raise_server_exceptions=False)
 
         resp = client.post(

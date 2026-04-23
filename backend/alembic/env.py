@@ -17,29 +17,21 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
+from app.db.base import Base
+import app.db.models  # noqa: F401
+
 # Ensure the root directory is in the sys.path so 'app' can be imported
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import Base so Alembic autogenerate can detect model changes
-from app.db.base import Base
-
-# Import all ORM models — autogenerate requires every model to be imported
-# before context.run_migrations() is called
-import app.db.models  # noqa: F401
-
-# Alembic Config object — gives access to alembic.ini values
 config = context.config
 
-# Override sqlalchemy.url with DATABASE_SYNC_URL env var if set (Docker Compose sets this)
 sync_url = os.getenv("DATABASE_SYNC_URL")
 if sync_url:
     config.set_main_option("sqlalchemy.url", sync_url)
 
-# Interpret the config file for Python logging
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Metadata for autogenerate support
 target_metadata = Base.metadata
 
 

@@ -58,7 +58,9 @@ export function BookingForm({ resource, slot, onClose }: Props) {
       const status = axiosErr.response?.status;
       const detail = axiosErr.response?.data?.detail ?? '';
 
-      if (status === 409) {
+      if (status === 403) {
+        setError(detail || 'You do not have permission to book this resource type.');
+      } else if (status === 409) {
         setError(
           detail.toLowerCase().includes('concurrent')
             ? 'Booking conflict detected. Please try again.'

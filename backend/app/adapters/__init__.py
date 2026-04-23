@@ -1,1 +1,1 @@
-# BE2: Resource adapter interfaces and concrete implementations
+# : Resource adapter interfaces and concrete implementations

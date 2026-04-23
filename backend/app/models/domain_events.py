@@ -65,7 +65,7 @@ class BookingCancelled(DomainEvent):
 @dataclass
 class NoShowTriggered(DomainEvent):
     """
-    Emitted by CheckInService (BE2) when Redis TTL expires without QR scan.
+    Emitted by CheckInService when Redis TTL expires without QR scan.
     Included here so BookingService can reference the type in docstrings and tests.
     """
     booking_id:  UUID = None

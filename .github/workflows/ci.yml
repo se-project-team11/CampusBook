@@ -159,7 +159,7 @@ jobs:
           fi
           
       - name: Pytest coverage PR comment
-        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        if: github.event_name == 'pull_request_target'
         uses: MishaKav/pytest-coverage-comment@main
         continue-on-error: true
         with:
