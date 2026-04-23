@@ -82,6 +82,27 @@ services:
     
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
+    # ... existing services ...
+
+  # Vite Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: campusbook-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+      - API_TARGET=http://api:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+    networks:
+      - campusbook
+
 volumes:
   pgdata:
   redisdata:
