@@ -26,13 +26,17 @@ function createAxiosInstance(): AxiosInstance {
   instance.interceptors.response.use(
     (r) => r,
     (error: AxiosError) => {
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        const isLoginPage = window.location.pathname === '/login';
-        if (!isLoginPage) {
-          localStorage.removeItem('campusbook_token');
-          localStorage.removeItem('campusbook_user');
-          window.location.href = '/login';
-        }
+      const status = error.response?.status;
+      const isLoginPage = window.location.pathname === '/login';
+      if ((status === 401) && !isLoginPage) {
+        localStorage.removeItem('campusbook_token');
+        localStorage.removeItem('campusbook_user');
+        window.location.href = '/login';
+      }
+      if (status === 403 && isLoginPage) {
+        localStorage.removeItem('campusbook_token');
+        localStorage.removeItem('campusbook_user');
+        window.location.href = '/login';
       }
       return Promise.reject(error);
     },
@@ -84,6 +88,7 @@ export const apiClient = {
     pendingApprovals: () => http.get<UserBookingsResponse>('/bookings/pending-approval'),
     approve: (bookingId: string) => http.patch<Booking>(`/bookings/${bookingId}/approve`),
     reject: (bookingId: string) => http.patch(`/bookings/${bookingId}/reject`),
+    cancel: (bookingId: string) => http.delete(`/bookings/${bookingId}/admin-cancel`),
     roomOverview: () => http.get<{ bookings: ActiveBookingOverview[] }>('/admin/room-overview'),
   },
 

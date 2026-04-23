@@ -18,9 +18,6 @@ from app.repositories.booking_repository import BookingRepository
 from app.services.event_log import DomainEventLog
 from app.services.state_manager import BookingStateMgr
 
-# TYPE_CHECKING guard prevents circular imports at runtime.
-# ResourceAdapter, ValidationStrategy, NotificationService are BE2's code.
-# We import their ABCs only for type hints — we never instantiate them here.
 if TYPE_CHECKING:
     from app.adapters.resource_adapter import ResourceAdapter
     from app.strategies.validation_strategy import ValidationStrategy
@@ -75,12 +72,12 @@ class BookingService:
     Orchestrates booking creation and cancellation — the core of Feature F1.
 
     PATTERNS APPLIED (all demonstrated in create_booking):
-      Adapter    — availability checked via ResourceAdapter interface (BE2)
-      Strategy   — validation delegated to ValidationStrategy interface (BE2)
+      Adapter    — availability checked via ResourceAdapter interface ()
+      Strategy   — validation delegated to ValidationStrategy interface ()
       Builder    — Booking object constructed via BookingBuilder
       State Machine — transitions mediated by BookingStateMgr
       Repository — persistence abstracted behind BookingRepository (DIP)
-      Observer   — state changes published via NotificationService (BE2)
+      Observer   — state changes published via NotificationService ()
       Domain Events — BookingCreated appended to DomainEventLog
 
     GRASP:
@@ -105,12 +102,12 @@ class BookingService:
 
     def __init__(
         self,
-        adapter_registry,        # AdapterRegistry (BE2) — get_for_resource(UUID)→ResourceAdapter
-        strategy_registry,       # StrategyRegistry (BE2) — get_for_resource(UUID)→ValidationStrategy
+        adapter_registry,        # AdapterRegistry () — get_for_resource(UUID)→ResourceAdapter
+        strategy_registry,       # StrategyRegistry () — get_for_resource(UUID)→ValidationStrategy
         booking_repo: BookingRepository,
         state_mgr: BookingStateMgr,
         event_log: DomainEventLog,
-        notification_svc,        # NotificationService (BE2) — on_booking_event(DomainEvent)
+        notification_svc,        # NotificationService () — on_booking_event(DomainEvent)
         redis,                   # aioredis client — set(key, value, ex=seconds)
     ) -> None:
         self._adapters      = adapter_registry
@@ -142,7 +139,7 @@ class BookingService:
           4. LOCK+SAVE  — pessimistic lock + persist in ACID transaction
           5. STATE      — transition RESERVED → CONFIRMED
           6. EVENT      — append BookingCreated to audit log
-          7. REDIS TTL  — write booking_ttl:{id} key (consumed by BE2 CheckInService)
+          7. REDIS TTL  — write booking_ttl:{id} key (consumed by  CheckInService)
           8. NOTIFY     — fan out to email/WebSocket channels (async, non-blocking)
 
         Returns the confirmed Booking on success.
@@ -264,8 +261,8 @@ class BookingService:
         )
         await self._event_log.append(event)
 
-        # ── Step 7: Redis TTL key (consumed by BE2's CheckInService) ─────────
-        # BE2's CheckInService listens to __keyevent@0__:expired events.
+        # ── Step 7: Redis TTL key (consumed by 's CheckInService) ─────────
+        # 's CheckInService listens to __keyevent@0__:expired events.
         # When booking_ttl:{id} expires at T+15 min, CheckInService:
         #   1. Transitions booking → NO_SHOW
         #   2. Promotes next waitlist entry
@@ -280,7 +277,7 @@ class BookingService:
         # Observer pattern: NotificationService is the Subject; email/SMS/
         # WebSocket channels are the Observers. BookingService fires and
         # forgets — notification failure MUST NOT cause booking failure
-        # (circuit breaker is BE2's responsibility in NotificationService).
+        # (circuit breaker is 's responsibility in NotificationService).
         try:
             await self._notif.on_booking_event(event)
         except Exception as e:
@@ -372,3 +369,34 @@ class BookingService:
         self._state_mgr.transition(booking, BookingState.RELEASED)
         await self._repo.update_state(booking_id, BookingState.RELEASED.value)
         await self._redis.delete(f"booking_ttl:{booking_id}")
+
+    async def admin_cancel_booking(self, booking_id: UUID, admin_user_id: UUID) -> None:
+        """
+        Admin cancels any booking regardless of owner.
+        Admins can cancel RESERVED or CONFIRMED bookings.
+
+        Transitions: RESERVED → RELEASED or CONFIRMED → RELEASED
+        Side effects:
+          - Redis TTL key deleted
+          - BookingCancelled event emitted
+        """
+        booking = await self._repo.find_by_id(booking_id)
+        if booking is None:
+            raise BookingNotFoundError(booking_id)
+
+        self._state_mgr.transition(booking, BookingState.RELEASED)
+        await self._repo.update_state(booking_id, BookingState.RELEASED.value)
+
+        await self._redis.delete(f"booking_ttl:{booking_id}")
+
+        cancel_event = BookingCancelled(
+            booking_id=booking_id,
+            user_id=admin_user_id,
+            resource_id=booking.resource_id,
+        )
+        await self._event_log.append(cancel_event)
+        try:
+            await self._notif.on_booking_event(cancel_event)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to send cancellation notification: {e}")
