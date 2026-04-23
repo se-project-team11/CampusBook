@@ -211,6 +211,16 @@ export function AdminDashboard() {
                       <p className={`mt-1 ${isCheckedIn ? 'text-purple-600' : 'text-blue-600'}`}>
                         {booking.user_email}
                       </p>
+                      <button
+                        onClick={() => {
+                          if (confirm('Cancel this booking?')) {
+                            apiClient.admin.cancel(booking.booking_id).then(load);
+                          }
+                        }}
+                        className="mt-2 text-xs text-red-600 hover:text-red-700 font-medium"
+                      >
+                        Cancel Booking
+                      </button>
                     </div>
                   ) : (
                     <div className="rounded-lg px-3 py-2 text-xs bg-green-50 border border-green-100 text-green-700 font-medium">
@@ -253,6 +263,12 @@ export function AdminDashboard() {
                     apiClient.admin.reject(b.booking_id).then(() =>
                       setPending(prev => prev.filter(x => x.booking_id !== b.booking_id)),
                     )
+                  }
+                  onCancel={() =>
+                    apiClient.admin.cancel(b.booking_id).then(() => {
+                      setPending(prev => prev.filter(x => x.booking_id !== b.booking_id));
+                      load();
+                    })
                   }
                 />
               ))}
@@ -322,11 +338,13 @@ function ApprovalCard({
   resourceName,
   onApprove,
   onReject,
+  onCancel,
 }: {
   booking: Booking;
   resourceName: string;
   onApprove: () => void;
   onReject: () => void;
+  onCancel: () => void;
 }) {
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -351,6 +369,7 @@ function ApprovalCard({
       <div className="flex gap-2 shrink-0">
         <Button variant="secondary" size="sm" onClick={onApprove}>Approve</Button>
         <Button variant="danger" size="sm" onClick={onReject}>Reject</Button>
+        <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
       </div>
     </div>
   );

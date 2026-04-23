@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import AuthUser, get_current_user, require_roles
 from app.db.base import get_db
-from app.dependencies import get_booking_service
+from app.dependencies import get_booking_service, get_catalogue_service
 from app.models.time_slot import TimeSlot
 from app.services.booking_service import (
     BookingNotFoundError,
@@ -32,6 +32,7 @@ from app.services.booking_service import (
     ConcurrentBookingError,
     SlotUnavailableError,
 )
+from app.services.catalogue_service import CatalogueService
 
 router = APIRouter(prefix="/api/bookings", tags=["bookings"])
 
@@ -100,11 +101,37 @@ async def create_booking(
     db:   AsyncSession   = Depends(get_db),
     user: AuthUser       = Depends(require_roles(["ROLE_STUDENT", "ROLE_FACULTY"])),
     svc:  BookingService = Depends(get_booking_service),
+    catalogue: CatalogueService = Depends(get_catalogue_service),
 ):
     """
     RBAC: ROLE_STUDENT and ROLE_FACULTY only.
     ROLE_DEPT_ADMIN and ROLE_FACILITIES cannot create bookings via this endpoint.
+
+    Role-based resource type restrictions:
+      - STUDENT: can only book STUDY_ROOM, LAB, SPORTS
+      - FACULTY: can only book SEMINAR, LAB
     """
+    resource = await catalogue.get_resource_by_id(req.resource_id)
+    if not resource:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Resource not found",
+        )
+
+    resource_type = resource.get("type", "")
+    if user.role == "ROLE_STUDENT":
+        allowed_types = {"STUDY_ROOM", "LAB", "SPORTS"}
+    elif user.role == "ROLE_FACULTY":
+        allowed_types = {"SEMINAR", "LAB"}
+    else:
+        allowed_types = set()
+
+    if resource_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Role {user.role} cannot book resource type {resource_type}. Allowed types: {', '.join(allowed_types)}",
+        )
+
     try:
         slot = TimeSlot(start=req.slot_start, end=req.slot_end)
         booking = await svc.create_booking(
@@ -291,6 +318,26 @@ async def reject_booking(
     """Transitions a RESERVED booking to RELEASED. ROLE_DEPT_ADMIN only."""
     try:
         await svc.reject_booking(booking_id)
+    except BookingNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Booking {booking_id} not found.")
+
+
+@router.delete(
+    "/{booking_id}/admin-cancel",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Admin cancel a booking",
+)
+async def admin_cancel_booking(
+    booking_id: UUID,
+    user: AuthUser       = Depends(require_roles(["ROLE_DEPT_ADMIN"])),
+    svc:  BookingService = Depends(get_booking_service),
+):
+    """
+    Cancels any booking regardless of owner. ROLE_DEPT_ADMIN only.
+    Can cancel RESERVED or CONFIRMED bookings.
+    """
+    try:
+        await svc.admin_cancel_booking(booking_id, user.id)
     except BookingNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Booking {booking_id} not found.")
 
