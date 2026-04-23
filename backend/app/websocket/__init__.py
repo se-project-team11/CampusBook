@@ -1,1 +1,1 @@
-# BE2: WebSocket hub
+# WebSocket hub

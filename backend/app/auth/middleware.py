@@ -23,7 +23,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 JWT_SECRET    = os.getenv("JWT_SECRET", "campusbook-dev-secret-change-in-production")
 JWT_ALGORITHM = "HS256"
 
-# Valid role values — must match FE3's devAccounts and BE2's JWTs
+# Valid role values — must match devAccounts and JWTs
 VALID_ROLES = frozenset({
     "ROLE_STUDENT",
     "ROLE_FACULTY",

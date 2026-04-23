@@ -27,7 +27,7 @@ from app.services.event_log import PostgresDomainEventLog
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
-# Shared singleton instances (constructed once at startup)
+# Shared singleton instances
 _redis_client = None
 _state_mgr    = BookingStateMgr()
 
@@ -46,14 +46,13 @@ def get_booking_service(
     """
     FastAPI dependency that constructs a BookingService with all real implementations.
 
-    BE2 registries (AdapterRegistry, StrategyRegistry, NotificationService) are
-    imported here — this is the only file that crosses the BE1/BE2 boundary.
-    Once BE2 delivers their modules, uncomment the real imports below.
+     registries (AdapterRegistry, StrategyRegistry, NotificationService) are
+    imported here — this is the only file that crosses the BE1/ boundary.
+    Once  delivers their modules, uncomment the real imports below.
     """
     repo      = PostgresBookingRepository(db)
     event_log = PostgresDomainEventLog(db)
 
-    # ── BE2 dependencies ─────────
     from app.adapters.registry import AdapterRegistry
     from app.strategies.registry import StrategyRegistry
     from app.services.notification_service import NotificationService, EmailChannel, SMSChannel, WebSocketChannel

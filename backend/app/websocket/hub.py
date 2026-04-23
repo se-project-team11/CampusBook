@@ -1,5 +1,5 @@
 """
-WebSocketHub — F3 Real-time availability updates.
+WebSocketHub — Real-time availability updates.
 
 Subscribes to Redis pub/sub channel 'booking.events'.
 Broadcasts to all Socket.io rooms watching a given resource.
@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
 from fastapi import WebSocket
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class WebSocketHub:
 
     def __init__(self, redis_url: str):
         self._redis_url = redis_url
-        self._rooms: dict[str, set[WebSocket]] = {}  # resource_id → set of WebSockets
+        self._rooms: dict[str, set[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, resource_id: str):
         """Accept connection and add to resource room."""
@@ -93,8 +94,5 @@ class WebSocketHub:
             logger.error(f"[WebSocketHub] Listener task failed: {e}")
 
 
-# Singleton instance, initialized with default Redis URL
-# (Will be overridden with env var in main.py)
-import os
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 hub = WebSocketHub(REDIS_URL)
