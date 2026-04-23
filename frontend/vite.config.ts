@@ -11,10 +11,10 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: process.env.API_TARGET || 'http://localhost:8000',
         ws: true,   // also forwards WebSocket upgrades on /api/ws/* to the backend
       },
-      '/auth': 'http://localhost:8000',
+      '/auth': process.env.API_TARGET || 'http://localhost:8000',
     },
   },
 })
