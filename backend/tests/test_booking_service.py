@@ -7,7 +7,7 @@ No database connection required — tests run in < 1 second.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -323,3 +323,55 @@ class TestGetBooking:
         await svc.create_booking(None, USER_ID, RESOURCE_ID, slot2)
         bookings = await svc.get_user_bookings(USER_ID)
         assert len(bookings) == 2
+
+
+# ── Waitlist promotion tests ─────────────────────────────────────────────────────────
+
+class TestWaitlistPromotion:
+    """Tests for waitlist promotion on cancellation."""
+
+    @pytest.mark.asyncio
+    async def test_cancel_without_waitlist_works(self):
+        """Cancel without waitlist should work without DB."""
+        svc, repo, event_log, notif, redis = make_service()
+        booking = await svc.create_booking(None, USER_ID, RESOURCE_ID, SLOT)
+        # Pass db=None (unit test mode) - should not fail
+        await svc.cancel_booking(None, booking.id, USER_ID)
+        stored = await repo.find_by_id(booking.id)
+        assert stored.state == BookingState.RELEASED
+
+
+# ── Slot started tests ────────────────────────────────────────────────────────────
+
+class TestSlotStartedTTL:
+    """Tests for TTL behavior when slot has already started."""
+
+    @pytest.mark.asyncio
+    async def test_future_slot_sets_ttl(self):
+        """Future slot should set 15-min TTL."""
+        svc, repo, event_log, notif, redis = make_service()
+        future_slot = TimeSlot(
+            datetime(2030, 1, 1, 10, 0),
+            datetime(2030, 1, 1, 11, 0),
+        )
+        await svc.create_booking(None, USER_ID, RESOURCE_ID, future_slot)
+        # Redis set should be called with ex=900
+        redis.set.assert_called_once()
+        call_args = redis.set.call_args
+        assert call_args[1].get('ex') == 900
+
+    @pytest.mark.asyncio
+    async def test_started_slot_no_ttl(self):
+        """Slot that has already started should not have TTL (no expiry)."""
+        svc, repo, event_log, notif, redis = make_service()
+        # Slot started 30 min ago, ends in 30 min
+        past_start = datetime.utcnow() - timedelta(minutes=30)
+        past_end = datetime.utcnow() + timedelta(minutes=30)
+        started_slot = TimeSlot(past_start, past_end)
+        await svc.create_booking(None, USER_ID, RESOURCE_ID, started_slot)
+        # Redis set should be called without 'ex' parameter
+        redis.set.assert_called_once()
+        call_args = redis.set.call_args
+        # Either no 'ex' key, or ex is None
+        ex_value = call_args[1].get('ex')
+        assert ex_value is None or 'ex' not in call_args[1]

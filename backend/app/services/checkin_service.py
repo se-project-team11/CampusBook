@@ -3,18 +3,21 @@ CheckInService — F2 QR Code Check-In & Redis TTL Auto-Release.
 
 Handles two main flows:
 1. Active: User scans QR code at venue -> validate -> mark CHECKED_IN.
-2. Passive: Redis TTL expires (no show) -> mark NO_SHOW -> promote waitlist.
+2. Passive: Redis TTL expires (no show) -> mark NO_SHOW -> promote waitlist (clear waitlist after).
 """
 import asyncio
 import json
 import logging
+import secrets
+from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import BookingRow, WaitlistRow
 from app.models.booking import BookingState
+from app.services.catalogue_service import CatalogueService
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +28,11 @@ class CheckInService:
     Listens to Redis keyspace events for booking_ttl:* expiry.
     """
 
-    def __init__(self, redis, session_factory, notification_svc):
+    def __init__(self, redis, session_factory, notification_svc, catalogue_svc):
         self._redis = redis
         self._sessions = session_factory  # Factory needed because listener runs in background
         self._notif = notification_svc
+        self._catalogue = catalogue_svc
 
     async def validate_qr(self, db: AsyncSession, qr_token: str) -> dict:
         """Called when user scans their QR code at the venue."""
@@ -99,11 +103,12 @@ class CheckInService:
             asyncio.create_task(self._handle_no_show(booking_id_str))
 
     async def _handle_no_show(self, booking_id_str: str):
-        """Transitions booking to NO_SHOW and promotes next waitlist entry."""
+        """Transitions booking to RELEASED, promotes first waitlist entry, clears waitlist."""
         try:
+            booking_id = UUID(booking_id_str)
+
             async with self._sessions() as db:
                 async with db.begin():
-                    booking_id = UUID(booking_id_str)
                     result = await db.execute(
                         select(BookingRow).where(
                             BookingRow.id == booking_id,
@@ -112,23 +117,14 @@ class CheckInService:
                     )
                     booking = result.scalar_one_or_none()
                     if not booking:
-                        # Already checked in or cancelled before TTL expired
                         return
 
-                    # Transition to NO_SHOW → RELEASED
-                    await db.execute(
-                        update(BookingRow)
-                        .where(BookingRow.id == booking_id)
-                        .values(state=BookingState.NO_SHOW.value)
-                    )
-                    # Note: We technically go NO_SHOW -> RELEASED immediately to free the slot
                     await db.execute(
                         update(BookingRow)
                         .where(BookingRow.id == booking_id)
                         .values(state=BookingState.RELEASED.value)
                     )
 
-                    # Promote next waitlist entry
                     wl_result = await db.execute(
                         select(WaitlistRow).where(
                             WaitlistRow.resource_id == booking.resource_id,
@@ -138,12 +134,38 @@ class CheckInService:
                         .limit(1)
                     )
                     next_entry = wl_result.scalar_one_or_none()
-                    
-                    promoted_user_id = str(next_entry.user_id) if next_entry else None
 
-                # DB Commit happens automatically on exit of async with db.begin()
+                    promoted_user_id = None
+                    new_booking_id = None
 
-                # Publish SlotReleased event for WebSocket
+                    if next_entry:
+                        from uuid import uuid4
+                        new_booking = BookingRow(
+                            id=uuid4(),
+                            user_id=next_entry.user_id,
+                            resource_id=booking.resource_id,
+                            slot_start=booking.slot_start,
+                            slot_end=booking.slot_end,
+                            state=BookingState.CONFIRMED.value,
+                            qr_token=secrets.token_urlsafe(32),
+                        )
+                        db.add(new_booking)
+                        new_booking_id = str(new_booking.id)
+
+                        await db.execute(
+                            delete(WaitlistRow).where(
+                                WaitlistRow.resource_id == booking.resource_id,
+                                WaitlistRow.slot_start == booking.slot_start,
+                            )
+                        )
+
+                        promoted_user_id = str(next_entry.user_id)
+
+                        await self._redis.set(f"booking_ttl:{new_booking_id}", "1", ex=600)
+
+                        slot_date = booking.slot_start.replace(tzinfo=timezone.utc).date()
+                        await self._catalogue.invalidate_cache(booking.resource_id, slot_date)
+
                 await self._redis.publish(
                     "booking.events",
                     json.dumps(
@@ -152,6 +174,7 @@ class CheckInService:
                             "resource_id": str(booking.resource_id),
                             "slot_start": booking.slot_start.isoformat(),
                             "promoted_user_id": promoted_user_id,
+                            "new_booking_id": new_booking_id,
                         }
                     ),
                 )

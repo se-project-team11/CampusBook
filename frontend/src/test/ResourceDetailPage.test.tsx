@@ -8,8 +8,8 @@ vi.mock('../services/api', () => ({
   apiClient: {
     resources:    { getById: vi.fn() },
     availability: { slots: vi.fn() },
-    bookings:     { create: vi.fn() },
-    waitlist:     { join: vi.fn() },
+    bookings:     { create: vi.fn(), myBookings: vi.fn() },
+    waitlist:     { join: vi.fn(), mine: vi.fn() },
   },
 }));
 
@@ -49,6 +49,10 @@ describe('ResourceDetailPage', () => {
     const { apiClient } = await import('../services/api');
     (apiClient.availability.slots as ReturnType<typeof vi.fn>)
       .mockResolvedValue({ data: { slots: [] } });
+    (apiClient.bookings.myBookings as ReturnType<typeof vi.fn>)
+      .mockResolvedValue({ data: { bookings: [] } });
+    (apiClient.waitlist.mine as ReturnType<typeof vi.fn>)
+      .mockResolvedValue({ data: { entries: [] } });
   });
 
   it('shows loading spinner when resource is not yet available', async () => {

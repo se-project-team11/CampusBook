@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.builders.booking_builder import BookingBuilder
-from app.db.models import BookingRow
+from app.db.models import BookingRow, WaitlistRow
 from app.models.booking import Booking, BookingState
 from app.models.domain_events import BookingCreated, BookingCancelled
 from app.models.time_slot import TimeSlot
@@ -267,11 +268,25 @@ class BookingService:
         #   1. Transitions booking → NO_SHOW
         #   2. Promotes next waitlist entry
         #   3. Publishes SlotReleased to Redis pub/sub → WebSocket hub → clients
-        await self._redis.set(
-            f"booking_ttl:{booking.id}",
-            "1",
-            ex=900,  # 900 seconds = 15 minutes
-        )
+        #
+        # If slot has already started (and not ended), don't set TTL — allow QR entry without time limit
+        now = datetime.now(timezone.utc)
+        slot_start_aware = slot.start.replace(tzinfo=timezone.utc) if slot.start.tzinfo is None else slot.start
+        slot_end_aware = slot.end.replace(tzinfo=timezone.utc) if slot.end.tzinfo is None else slot.end
+        slot_has_started = slot_start_aware <= now
+        slot_is_alive = slot_end_aware > now
+
+        if slot_has_started and slot_is_alive:
+            await self._redis.set(
+                f"booking_ttl:{booking.id}",
+                "1",
+            )
+        else:
+            await self._redis.set(
+                f"booking_ttl:{booking.id}",
+                "1",
+                ex=900,  # 900 seconds = 15 minutes
+            )
 
         # ── Step 8: OBSERVER — async notifications ───────────────────────────
         # Observer pattern: NotificationService is the Subject; email/SMS/
@@ -291,13 +306,14 @@ class BookingService:
         db: Optional[AsyncSession],
         booking_id: UUID,
         requesting_user_id: UUID,
-    ) -> None:
+    ) -> Booking:
         """
         Cancel a CONFIRMED booking. Only the booking owner can cancel.
 
         Transitions: CONFIRMED → RELEASED
         Side effects:
           - Redis TTL key deleted (prevents false no-show)
+          - Promotes first waitlist entry (keeps rest of waitlist)
           - BookingCancelled event appended
           - Notification dispatched
         """
@@ -307,14 +323,57 @@ class BookingService:
         if booking.user_id != requesting_user_id:
             raise BookingPermissionError()
 
-        # State machine validates CONFIRMED → RELEASED is allowed
         self._state_mgr.transition(booking, BookingState.RELEASED)
         await self._repo.update_state(booking_id, BookingState.RELEASED.value)
 
-        # Delete Redis TTL key — no-show workflow must not fire after cancel
         await self._redis.delete(f"booking_ttl:{booking_id}")
 
-        # Emit cancellation event
+        if db is not None:
+            wl_result = await db.execute(
+                select(WaitlistRow).where(
+                    WaitlistRow.resource_id == booking.resource_id,
+                    WaitlistRow.slot_start == booking.slot_start,
+                )
+                .order_by(WaitlistRow.position)
+                .limit(1)
+            )
+            next_entry = wl_result.scalar_one_or_none()
+
+            if next_entry:
+                from uuid import uuid4
+                new_booking = BookingRow(
+                    id=uuid4(),
+                    user_id=next_entry.user_id,
+                    resource_id=booking.resource_id,
+                    slot_start=booking.slot_start,
+                    slot_end=booking.slot_end,
+                    state=BookingState.CONFIRMED.value,
+                    qr_token=secrets.token_urlsafe(32),
+                )
+                db.add(new_booking)
+                new_booking_id = str(new_booking.id)
+
+                await db.execute(
+                    delete(WaitlistRow).where(
+                        WaitlistRow.id == next_entry.id
+                    )
+                )
+
+                await self._redis.set(f"booking_ttl:{new_booking_id}", "1", ex=600)
+
+                await self._redis.publish(
+                    "booking.events",
+                    json.dumps(
+                        {
+                            "event": "SlotReleased",
+                            "resource_id": str(booking.resource_id),
+                            "slot_start": booking.slot_start.isoformat(),
+                            "promoted_user_id": str(next_entry.user_id),
+                            "new_booking_id": new_booking_id,
+                        }
+                    ),
+                )
+
         cancel_event = BookingCancelled(
             booking_id=booking_id,
             user_id=requesting_user_id,
@@ -326,6 +385,8 @@ class BookingService:
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Failed to send cancellation notification: {e}")
+
+        return booking
 
     async def get_booking(self, booking_id: UUID) -> Booking:
         """Fetch a booking by ID. Raises BookingNotFoundError if missing."""

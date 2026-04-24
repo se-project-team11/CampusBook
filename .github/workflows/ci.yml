@@ -88,7 +88,7 @@ jobs:
         run: cd frontend && npm install
 
       - name: Run frontend tests
-        run: cd frontend && npm run test -- tests/
+        run: cd frontend && npm run test -- src/test/
 
   docker-build:
     name: Docker Build

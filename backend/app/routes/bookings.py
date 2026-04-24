@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from uuid import UUID
+from datetime import date as date_cls
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
@@ -142,6 +143,10 @@ async def create_booking(
             notes=req.notes,
             user_email=user.email,
         )
+        
+        booking_date = booking.slot_start.date() if booking.slot_start.tzinfo else booking.slot_start.replace(tzinfo=timezone.utc).date()
+        await catalogue.invalidate_cache(booking.resource_id, booking_date)
+        
         return BookingResponse(
             booking_id=booking.id,
             resource_id=booking.resource_id,
@@ -352,17 +357,21 @@ async def cancel_booking(
     db:   AsyncSession   = Depends(get_db),
     user: AuthUser       = Depends(require_roles(["ROLE_STUDENT", "ROLE_FACULTY"])),
     svc:  BookingService = Depends(get_booking_service),
+    catalogue: CatalogueService = Depends(get_catalogue_service),
 ):
     """
     Cancels a CONFIRMED booking. Only the booking owner can cancel.
     Side effects: Redis TTL key deleted, cancellation event emitted.
     """
     try:
-        await svc.cancel_booking(
+        booking = await svc.cancel_booking(
             db=db,
             booking_id=booking_id,
             requesting_user_id=user.id,
         )
+        if booking:
+            booking_date = booking.slot_start.date() if booking.slot_start.tzinfo else booking.slot_start.replace(tzinfo=timezone.utc).date()
+            await catalogue.invalidate_cache(booking.resource_id, booking_date)
     except BookingNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
