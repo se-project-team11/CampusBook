@@ -1,23 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --color-brand-50: #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-300: #93c5fd;
-  --color-brand-400: #60a5fa;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af;
-  --color-brand-900: #1e3a8a;
+  --color-brand-50:  #f0f9fb;
+  --color-brand-100: #d9eff5;
+  --color-brand-200: #b0dde8;
+  --color-brand-300: #76c3d8;
+  --color-brand-400: #3ea5c2;
+  --color-brand-500: #2589a8;
+  --color-brand-600: #1e6e8a;
+  --color-brand-700: #185871;
+  --color-brand-800: #164a5e;
+  --color-brand-900: #143d4f;
+
+  --color-accent-50:  #fdf5f3;
+  --color-accent-100: #fbe8e3;
+  --color-accent-200: #f7cfc6;
+  --color-accent-300: #f0a898;
+  --color-accent-400: #e47a67;
+  --color-accent-500: #d95840;
+  --color-accent-600: #c0402c;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
-  background: #f9fafb;
-  color: #111827;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: #dde3ed;
+  color: #1a2535;
   -webkit-font-smoothing: antialiased;
 }
 

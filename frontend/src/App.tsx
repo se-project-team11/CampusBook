@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/AuthContext';
 import { ProtectedRoute } from './router/ProtectedRoute';
-import { Navbar } from './components/Navbar';
+import { Sidebar } from './components/Sidebar';
 import { LoginPage }           from './pages/LoginPage';
 import { SearchPage }          from './pages/SearchPage';
 import { ResourceDetailPage }  from './pages/ResourceDetailPage';
@@ -14,9 +14,9 @@ import type { ReactNode } from 'react';
 
 function Layout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
-      <main>{children}</main>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#dde3ed' }}>
+      <Sidebar />
+      <main style={{ flex: 1, overflowX: 'hidden' }}>{children}</main>
     </div>
   );
 }

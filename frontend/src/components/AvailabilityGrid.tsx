@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import type { CSSProperties } from 'react';
 import type { AvailabilitySlot, Resource } from '../types';
 import { apiClient } from '../services/api';
 import { useResourceSocket } from '../hooks/useResourceSocket';
@@ -19,18 +20,19 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+const card: CSSProperties = { background: 'white', borderRadius: 20, padding: 24, boxShadow: '0 4px 24px rgba(0,0,0,0.07)' };
+
 export function AvailabilityGrid({ resource, onBook, refreshKey = 0 }: Props) {
   const { user } = useAuth();
   const [selectedDate, setSelectedDate] = useState(todayStr());
-  const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [joinedWaitlist, setJoinedWaitlist] = useState<Set<string>>(new Set());
+  const [slots, setSlots]               = useState<AvailabilitySlot[]>([]);
+  const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState<string | null>(null);
+  const [joinedWaitlist, setJoinedWaitlist]   = useState<Set<string>>(new Set());
   const [waitlistLoading, setWaitlistLoading] = useState<string | null>(null);
 
   const lastEvent = useResourceSocket(resource.id);
-
-  const canBook = user?.role === 'ROLE_STUDENT' || user?.role === 'ROLE_FACULTY';
+  const canBook   = user?.role === 'ROLE_STUDENT' || user?.role === 'ROLE_FACULTY';
 
   const handleJoinWaitlist = async (slot: AvailabilitySlot) => {
     setWaitlistLoading(slot.slot_start);
@@ -38,7 +40,7 @@ export function AvailabilityGrid({ resource, onBook, refreshKey = 0 }: Props) {
       await apiClient.waitlist.join(resource.id, slot.slot_start, slot.slot_end);
       setJoinedWaitlist(prev => new Set(prev).add(slot.slot_start));
     } catch {
-      // silently ignore — slot may have opened, user can refresh
+      // slot may have opened — user can refresh
     } finally {
       setWaitlistLoading(null);
     }
@@ -58,19 +60,16 @@ export function AvailabilityGrid({ resource, onBook, refreshKey = 0 }: Props) {
   }, [resource.id, selectedDate]);
 
   useEffect(() => { loadAvailability(); }, [loadAvailability, refreshKey]);
-
-  useEffect(() => {
-    if (!lastEvent) return;
-    loadAvailability();
-  }, [lastEvent, loadAvailability]);
+  useEffect(() => { if (lastEvent) loadAvailability(); }, [lastEvent, loadAvailability]);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-5">
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-3">
-          <h3 className="font-semibold text-gray-900">Availability</h3>
+    <div style={card}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1a2535', margin: 0 }}>Availability</h3>
           {lastEvent && (
-            <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full animate-pulse">
+            <span style={{ fontSize: 10, fontWeight: 600, color: '#267040', background: '#edf7ee', padding: '2px 8px', borderRadius: 20 }}>
               Live
             </span>
           )}
@@ -80,74 +79,106 @@ export function AvailabilityGrid({ resource, onBook, refreshKey = 0 }: Props) {
           value={selectedDate}
           min={todayStr()}
           onChange={e => setSelectedDate(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-500"
+          style={{
+            border: '1px solid #e0e4ea', borderRadius: 10, padding: '7px 12px',
+            fontSize: 13, color: '#1a2535', fontFamily: "'DM Sans', system-ui, sans-serif",
+            outline: 'none',
+          }}
         />
       </div>
 
-      {loading && <div className="flex justify-center py-8"><Spinner /></div>}
-      {error && <p className="text-center text-red-600 text-sm py-4">{error}</p>}
+      {loading && <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}><Spinner /></div>}
+      {error  && <p style={{ textAlign: 'center', color: '#c0402c', fontSize: 13, padding: '12px 0' }}>{error}</p>}
 
       {!loading && !error && slots.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {slots.map((slot) => {
-            const available = slot.status === 'AVAILABLE';
-            const isPast = new Date(slot.slot_start) < new Date();
-            const isBooked = !available && !isPast;
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+          {slots.map(slot => {
+            const available        = slot.status === 'AVAILABLE';
+            const isPast           = new Date(slot.slot_start) < new Date();
+            const isBooked         = !available && !isPast;
             const alreadyWaitlisted = joinedWaitlist.has(slot.slot_start);
-            const isJoining = waitlistLoading === slot.slot_start;
+            const isJoining        = waitlistLoading === slot.slot_start;
 
             if (isBooked && canBook) {
               return (
-                <div key={slot.slot_start} className="px-3 py-2.5 rounded-xl text-sm border bg-red-50 border-red-100 flex flex-col gap-1">
-                  <div className="font-medium text-red-400">{formatTime(slot.slot_start)}</div>
-                  <div className="text-xs text-red-400 opacity-70">Booked</div>
+                <div key={slot.slot_start} style={{
+                  borderRadius: 14, padding: '12px 10px',
+                  background: '#fde8e3', border: '1px solid #f5c6b8',
+                  display: 'flex', flexDirection: 'column', gap: 4,
+                }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: '#c0402c', margin: 0 }}>{formatTime(slot.slot_start)}</p>
+                  <p style={{ fontSize: 11, color: '#c0402c', opacity: 0.7, margin: 0 }}>Booked</p>
                   {slot.waitlist_count && slot.waitlist_count > 0 ? (
-                    <div className="text-xs text-amber-600">{slot.waitlist_count} waiting</div>
+                    <p style={{ fontSize: 11, color: '#b07020', margin: 0 }}>{slot.waitlist_count} waiting</p>
                   ) : null}
                   <button
                     disabled={alreadyWaitlisted || isJoining}
                     onClick={() => handleJoinWaitlist(slot)}
-                    className="mt-0.5 text-xs font-medium px-2 py-1 rounded-lg transition-colors disabled:opacity-50 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
+                    style={{
+                      marginTop: 2, fontSize: 11, fontWeight: 600,
+                      padding: '4px 8px', borderRadius: 8,
+                      background: alreadyWaitlisted ? '#edf7ee' : '#fff3da',
+                      color: alreadyWaitlisted ? '#267040' : '#b07020',
+                      border: `1px solid ${alreadyWaitlisted ? '#c0e8c8' : '#f0dda0'}`,
+                      cursor: alreadyWaitlisted ? 'default' : 'pointer',
+                      fontFamily: 'inherit', opacity: isJoining ? 0.6 : 1,
+                    }}
                   >
-                    {isJoining ? '…' : alreadyWaitlisted ? '✓ Waitlisted' : '+ Waitlist'}
+                    {isJoining ? '...' : alreadyWaitlisted ? 'Waitlisted' : '+ Waitlist'}
                   </button>
                 </div>
               );
             }
+
+            const slotStyle: CSSProperties = isPast ? {
+              borderRadius: 14, padding: '12px 10px', textAlign: 'center',
+              background: '#f6f7f9', border: '1px solid #e8ecf0', cursor: 'not-allowed',
+            } : available ? {
+              borderRadius: 14, padding: '12px 10px', textAlign: 'center',
+              background: '#eaf7f5', border: '1.5px solid #b0dde8', cursor: 'pointer',
+              transition: 'box-shadow 0.15s',
+            } : {
+              borderRadius: 14, padding: '12px 10px', textAlign: 'center',
+              background: '#fde8e3', border: '1px solid #f5c6b8', cursor: 'not-allowed',
+            };
 
             return (
               <button
                 key={slot.slot_start}
                 disabled={!available || isPast}
                 onClick={() => available && !isPast && onBook(slot)}
-                className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
-                  isPast
-                    ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed'
-                    : available
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 cursor-pointer'
-                    : 'bg-red-50 text-red-400 border-red-100 cursor-not-allowed'
-                }`}
+                style={{ ...slotStyle, fontFamily: 'inherit', outline: 'none', width: '100%' }}
+                onMouseEnter={e => {
+                  if (available && !isPast) (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 12px rgba(76,168,176,0.2)';
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
+                }}
               >
-                <div>{formatTime(slot.slot_start)}</div>
-                <div className="text-xs opacity-70">
-                  {isPast ? 'Past' : 'Available'}
-                </div>
+                <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: isPast ? '#b0bac6' : available ? '#1e7a88' : '#c0402c' }}>
+                  {formatTime(slot.slot_start)}
+                </p>
+                <p style={{ fontSize: 11, margin: '3px 0 0', color: isPast ? '#c8d0d8' : available ? '#4ca8b0' : '#e47a67' }}>
+                  {isPast ? 'Past' : available ? 'Available' : 'Booked'}
+                </p>
               </button>
             );
           })}
         </div>
       )}
 
-      <div className="flex gap-4 mt-4 text-xs text-gray-500">
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-full bg-emerald-200 inline-block" />Available
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-full bg-red-200 inline-block" />Booked
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-full bg-gray-200 inline-block" />Past
-        </span>
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 18, marginTop: 18, paddingTop: 14, borderTop: '1px solid #f0f2f5' }}>
+        {[
+          { label: 'Available', dot: '#4ca8b0' },
+          { label: 'Booked',    dot: '#e47a67' },
+          { label: 'Past',      dot: '#c8d0d8' },
+        ].map(l => (
+          <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#6b7a8d' }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: l.dot, display: 'inline-block' }} />
+            {l.label}
+          </span>
+        ))}
       </div>
     </div>
   );

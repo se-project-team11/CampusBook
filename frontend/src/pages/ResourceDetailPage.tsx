@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { CSSProperties } from 'react';
 import { useLocation, useNavigate, useParams, Link } from 'react-router-dom';
 import type { AvailabilitySlot, Resource } from '../types';
 import { AvailabilityGrid } from '../components/AvailabilityGrid';
@@ -7,9 +8,39 @@ import { useAuth } from '../context/AuthContext';
 import { apiClient } from '../services/api';
 import { Spinner } from '../components/ui/Spinner';
 
-const typeIcons: Record<string, string> = {
-  STUDY_ROOM: '📚', LAB: '🔬', SPORTS: '⚽', SEMINAR: '🎓',
+const TYPE_LABEL: Record<string, string> = {
+  STUDY_ROOM: 'Study Room', LAB: 'Lab', SPORTS: 'Sports', SEMINAR: 'Seminar Hall',
 };
+const TYPE_COLOR: Record<string, { bg: string; color: string }> = {
+  STUDY_ROOM: { bg: '#eaf7f5', color: '#1e7a88' },
+  LAB:        { bg: '#f0ebfa', color: '#6a3fb5' },
+  SPORTS:     { bg: '#edf7ee', color: '#267040' },
+  SEMINAR:    { bg: '#fff3da', color: '#b07020' },
+};
+
+function TypeIcon({ type }: { type: string }) {
+  const color = TYPE_COLOR[type]?.color ?? '#6b7a8d';
+  if (type === 'STUDY_ROOM') return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+    </svg>
+  );
+  if (type === 'LAB') return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v11l-3 6h12l-3-6V3"/>
+    </svg>
+  );
+  if (type === 'SPORTS') return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/>
+    </svg>
+  );
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+    </svg>
+  );
+}
 
 export function ResourceDetailPage() {
   const location = useLocation();
@@ -37,46 +68,72 @@ export function ResourceDetailPage() {
   };
 
   if (!resource && !fetchError) {
-    return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
+    return <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><Spinner size="lg" /></div>;
   }
 
   if (!resource || fetchError) {
     return (
-      <div className="max-w-2xl mx-auto text-center py-20">
-        <p className="text-gray-500 mb-4">Resource not found.</p>
-        <Link to="/" className="text-brand-600 underline">Back to search</Link>
+      <div style={{ textAlign: 'center', paddingTop: 80 }}>
+        <p style={{ color: '#6b7a8d', marginBottom: 12 }}>Resource not found.</p>
+        <Link to="/" style={{ color: '#4ca8b0', fontWeight: 600 }}>Back to search</Link>
       </div>
     );
   }
 
   const canBook = user?.role === 'ROLE_STUDENT' || user?.role === 'ROLE_FACULTY';
+  const tc = TYPE_COLOR[resource.type] ?? { bg: '#f2f4f8', color: '#6b7a8d' };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
+    <div style={{ padding: '28px 28px 40px', maxWidth: 820, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+
       {/* Back */}
       <button
         onClick={() => navigate(-1)}
-        className="text-sm text-gray-500 hover:text-brand-600 mb-6 flex items-center gap-1"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          fontSize: 13, color: '#6b7a8d', background: 'none', border: 'none',
+          cursor: 'pointer', padding: 0, marginBottom: 22, fontFamily: 'inherit',
+        }}
       >
-        ← Back to search
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+        </svg>
+        Back to search
       </button>
 
-      {/* Resource header */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-6 mb-6">
-        <div className="flex items-start gap-4">
-          <span className="text-4xl">{typeIcons[resource.type] ?? '🏫'}</span>
-          <div className="flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold text-gray-900">{resource.name}</h1>
-              <span className="text-xs bg-brand-50 text-brand-700 font-medium px-2.5 py-1 rounded-full">
-                {resource.type.replace('_', ' ')}
+      {/* Resource header card */}
+      <div style={{
+        background: 'white', borderRadius: 20, padding: 24,
+        boxShadow: '0 4px 24px rgba(0,0,0,0.07)', marginBottom: 20,
+      } as CSSProperties}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: 14,
+            background: tc.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <TypeIcon type={resource.type} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
+              <h1 style={{ fontSize: 18, fontWeight: 700, color: '#1a2535', margin: 0 }}>{resource.name}</h1>
+              <span style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                color: tc.color, background: tc.bg, padding: '3px 10px', borderRadius: 20,
+              }}>
+                {TYPE_LABEL[resource.type] ?? resource.type.replace('_', ' ')}
               </span>
             </div>
-            <p className="text-gray-500 text-sm mt-1">{resource.location}</p>
-            <div className="flex items-center gap-4 mt-3 text-sm text-gray-600">
-              <span>👥 Capacity: <strong>{resource.capacity}</strong></span>
+            <p style={{ fontSize: 13, color: '#6b7a8d', margin: '0 0 12px' }}>{resource.location}</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 13, color: '#6b7a8d' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ca8b0" strokeWidth="2" strokeLinecap="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+                Capacity: <strong style={{ color: '#1a2535' }}>{resource.capacity}</strong>
+              </span>
               {resource.amenities?.length > 0 && (
-                <span>✓ {resource.amenities.join(', ')}</span>
+                <span style={{ color: '#9aa5b4' }}>{resource.amenities.join(', ')}</span>
               )}
             </div>
           </div>
@@ -87,18 +144,13 @@ export function ResourceDetailPage() {
       {canBook ? (
         <AvailabilityGrid resource={resource} onBook={setSelectedSlot} refreshKey={gridRefreshKey} />
       ) : (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 text-sm text-amber-800">
+        <div style={{ background: '#fff3da', border: '1px solid #f0dda0', borderRadius: 14, padding: '14px 18px', fontSize: 13, color: '#8a6020' }}>
           Only students and faculty can book resources. You are logged in as <strong>{user?.role}</strong>.
         </div>
       )}
 
-      {/* Booking modal */}
       {selectedSlot && (
-        <BookingForm
-          resource={resource}
-          slot={selectedSlot}
-          onClose={closeForm}
-        />
+        <BookingForm resource={resource} slot={selectedSlot} onClose={closeForm} />
       )}
     </div>
   );

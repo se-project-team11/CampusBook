@@ -1,384 +1,313 @@
 import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { ActiveBookingOverview, Booking, Resource } from '../types';
 import { apiClient } from '../services/api';
-import { Badge, Button, Spinner } from '../components/ui';
+import { Spinner } from '../components/ui/Spinner';
 
-type Tab = 'overview' | 'approvals';
+const POLL_MS = 30_000;
 
-const TYPE_ICON: Record<string, string> = {
-  STUDY_ROOM: '📚',
-  LAB: '🔬',
-  SPORTS: '⚽',
-  SEMINAR: '🎓',
+function OccupancyGauge({ value, max }: { value: number; max: number }) {
+  const r = 44, cx = 55, cy = 52;
+  const arc = Math.PI * r;
+  const offset = arc * (1 - Math.min(value / Math.max(max, 1), 1));
+  return (
+    <svg viewBox="0 0 110 60" style={{ width: '100%', maxWidth: 160 }}>
+      <path d={`M${cx - r} ${cy} A${r} ${r} 0 0 1 ${cx + r} ${cy}`}
+        fill="none" stroke="rgba(0,0,0,0.1)" strokeWidth="9" strokeLinecap="round" />
+      <path d={`M${cx - r} ${cy} A${r} ${r} 0 0 1 ${cx + r} ${cy}`}
+        fill="none" stroke="#d95840" strokeWidth="9" strokeLinecap="round"
+        strokeDasharray={`${arc}`} strokeDashoffset={`${offset}`} />
+    </svg>
+  );
+}
+
+const card: CSSProperties = { background: 'white', borderRadius: 20, padding: 24, boxShadow: '0 4px 24px rgba(0,0,0,0.07)' };
+const cardLabel: CSSProperties = { fontSize: 13, fontWeight: 500, color: '#6b7a8d', margin: 0 };
+const bigNum: CSSProperties = { fontSize: 48, fontWeight: 700, color: '#1a2535', lineHeight: 1.1, margin: '8px 0 4px' };
+const cardSub: CSSProperties = { fontSize: 12, color: '#9aa5b4', margin: 0 };
+
+const STATE_DOT: Record<string, string> = {
+  CONFIRMED:  '#4ca8b0',
+  CHECKED_IN: '#7c5cbf',
+  RESERVED:   '#e0a030',
 };
 
-const TYPE_LABEL: Record<string, string> = {
-  STUDY_ROOM: 'Study Room',
-  LAB: 'Lab',
-  SPORTS: 'Sports',
-  SEMINAR: 'Seminar Hall',
-};
-
-const POLL_INTERVAL_MS = 30_000;
+function fmt(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+function fmtShort(iso: string) {
+  return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
 
 export function AdminDashboard() {
-  const [tab, setTab] = useState<Tab>('overview');
-  const [resources, setResources] = useState<Resource[]>([]);
+  const [resources, setResources]           = useState<Resource[]>([]);
   const [activeBookings, setActiveBookings] = useState<ActiveBookingOverview[]>([]);
-  const [pending, setPending] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending]               = useState<Booking[]>([]);
+  const [loading, setLoading]               = useState(true);
+  const [refreshing, setRefreshing]         = useState(false);
+  const [lastUpdated, setLastUpdated]       = useState<Date | null>(null);
+  const [error, setError]                   = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchData = (showSpinner = false) => {
-    if (showSpinner) setLoading(true);
-    else setRefreshing(true);
+    if (showSpinner) setLoading(true); else setRefreshing(true);
     setError(null);
     return Promise.all([
       apiClient.resources.search(),
       apiClient.admin.roomOverview(),
       apiClient.admin.pendingApprovals(),
     ])
-      .then(([resourcesRes, overviewRes, approvalsRes]) => {
-        setResources(resourcesRes.data);
-        setActiveBookings(overviewRes.data.bookings);
-        setPending(approvalsRes.data.bookings);
+      .then(([rRes, oRes, aRes]) => {
+        setResources(rRes.data);
+        setActiveBookings(oRes.data.bookings);
+        setPending(aRes.data.bookings);
         setLastUpdated(new Date());
       })
-      .catch(() => setError('Failed to load dashboard data.'))
-      .finally(() => {
-        setLoading(false);
-        setRefreshing(false);
-      });
+      .catch(() => setError('Failed to load data.'))
+      .finally(() => { setLoading(false); setRefreshing(false); });
   };
 
-  const load = () => fetchData(true);
-
   const refresh = () => {
-    // Reset poll timer so it doesn't fire again immediately after a manual refresh
     if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(refresh, POLL_INTERVAL_MS);
+    timerRef.current = setInterval(refresh, POLL_MS);
     fetchData(false);
   };
 
   useEffect(() => {
-    load();
-    timerRef.current = setInterval(refresh, POLL_INTERVAL_MS);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    fetchData(true);
+    timerRef.current = setInterval(refresh, POLL_MS);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
 
-  // Map resource_id → its current booking (if any)
   const bookingByResource = new Map<string, ActiveBookingOverview>();
   for (const b of activeBookings) bookingByResource.set(b.resource_id, b);
 
-  const freeCount = resources.filter(r => !bookingByResource.has(r.id)).length;
+  const freeCount     = resources.filter(r => !bookingByResource.has(r.id)).length;
   const occupiedCount = resources.length - freeCount;
+  const sortedRes     = [...resources].sort((a, b) =>
+    (bookingByResource.has(a.id) ? 0 : 1) - (bookingByResource.has(b.id) ? 0 : 1)
+  );
 
-  // Booked/checked-in rooms first, then free rooms (stable within each group)
-  const sortedResources = [...resources].sort((a, b) => {
-    const aBooked = bookingByResource.has(a.id) ? 0 : 1;
-    const bBooked = bookingByResource.has(b.id) ? 0 : 1;
-    return aBooked - bBooked;
-  });
+  if (loading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><Spinner size="lg" /></div>;
+  }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
+    <div style={{ padding: '28px 28px 40px' }}>
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">Department resource management</p>
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-8 w-fit">
-        <TabBtn active={tab === 'overview'} onClick={() => setTab('overview')}>
-          Room Overview
-          {!loading && (
-            <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-semibold ${
-              tab === 'overview' ? 'bg-brand-100 text-brand-700' : 'bg-gray-200 text-gray-600'
-            }`}>
-              {occupiedCount}/{resources.length}
+      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a2535', margin: 0 }}>Admin Dashboard</h1>
+          <p style={{ fontSize: 13, color: '#6b7a8d', margin: '4px 0 0' }}>Department resource management</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {lastUpdated && (
+            <span style={{ fontSize: 11, color: '#9aa5b4' }}>
+              Updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </span>
           )}
-        </TabBtn>
-        <TabBtn active={tab === 'approvals'} onClick={() => setTab('approvals')}>
-          Pending Approvals
-          {pending.length > 0 && (
-            <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-semibold ${
-              tab === 'approvals' ? 'bg-amber-100 text-amber-700' : 'bg-amber-100 text-amber-700'
-            }`}>
-              {pending.length}
-            </span>
-          )}
-        </TabBtn>
+          <button
+            onClick={refresh} disabled={refreshing}
+            style={{
+              padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 500,
+              background: 'white', border: '1px solid #e0e4ea', color: '#4ca8b0',
+              cursor: refreshing ? 'default' : 'pointer', opacity: refreshing ? 0.6 : 1,
+              fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+            {refreshing ? 'Refreshing' : 'Refresh'}
+          </button>
+        </div>
       </div>
-
-      {loading && <div className="flex justify-center py-16"><Spinner size="lg" /></div>}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm mb-4">
+        <div style={{ background: '#fde8e3', border: '1px solid #f5c6b8', borderRadius: 12, padding: '10px 16px', fontSize: 13, color: '#c0402c', marginBottom: 20 }}>
           {error}
         </div>
       )}
 
-      {/* ── Room Overview ── */}
-      {!loading && tab === 'overview' && (
-        <>
-          {/* Toolbar */}
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-xs text-gray-400">
-              {lastUpdated
-                ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
-                : 'Loading…'}
-            </p>
-            <button
-              onClick={refresh}
-              disabled={refreshing}
-              className="flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50 transition-colors"
-            >
-              <span className={refreshing ? 'animate-spin inline-block' : ''}>↻</span>
-              {refreshing ? 'Refreshing…' : 'Refresh'}
-            </button>
-          </div>
+      {/* Top row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 20, marginBottom: 20 }}>
 
-          {/* Summary strip */}
-          <div className="grid grid-cols-3 gap-3 mb-6">
-            <StatCard value={resources.length} label="Total Rooms" color="gray" />
-            <StatCard value={freeCount} label="Available Now" color="green" />
-            <StatCard value={occupiedCount} label="Occupied" color="blue" />
-          </div>
-
-          {/* Room cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {sortedResources.map(r => {
-              const booking = bookingByResource.get(r.id);
-              const isOccupied = !!booking;
+        {/* Hero: room list */}
+        <div style={{ background: 'linear-gradient(135deg, #a8c5da, #c5dce8)', borderRadius: 20, padding: 24, boxShadow: '0 4px 24px rgba(0,0,0,0.07)' }}>
+          <p style={{ fontSize: 14, fontWeight: 600, color: '#1e3a4a', margin: '0 0 2px' }}>Room Overview</p>
+          <p style={{ fontSize: 12, color: '#4a6a7a', margin: '0 0 16px' }}>
+            Live occupancy — {occupiedCount} of {resources.length} in use
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
+            {sortedRes.map(r => {
+              const booking     = bookingByResource.get(r.id);
               const isCheckedIn = booking?.state === 'CHECKED_IN';
-
+              const isOccupied  = !!booking;
               return (
-                <div
-                  key={r.id}
-                  className={`bg-white rounded-xl border p-4 ${
-                    isCheckedIn
-                      ? 'border-purple-200'
-                      : isOccupied
-                      ? 'border-blue-200'
-                      : 'border-gray-200'
-                  }`}
-                >
-                  {/* Room header */}
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-xl flex-shrink-0">{TYPE_ICON[r.type] ?? '🏫'}</span>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-gray-900 text-sm leading-tight">{r.name}</p>
-                        <p className="text-xs text-gray-400">{r.location}</p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                      <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                        {TYPE_LABEL[r.type] ?? r.type}
-                      </span>
-                      <StatusChip occupied={isOccupied} checkedIn={isCheckedIn} />
-                    </div>
-                  </div>
-
-                  {/* Room meta */}
-                  <div className="flex items-center gap-3 text-xs text-gray-500 mb-3">
-                    <span>👥 {r.capacity} capacity</span>
-                    {r.amenities.length > 0 && (
-                      <span className="truncate">✓ {r.amenities.join(', ')}</span>
+                <div key={r.id} style={{
+                  background: 'rgba(255,255,255,0.55)', borderRadius: 12, padding: '10px 14px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: '#1e3a4a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {r.name}
+                    </p>
+                    <p style={{ fontSize: 11, color: '#4a6a7a', margin: '1px 0 0' }}>{r.location}</p>
+                    {booking && (
+                      <p style={{ fontSize: 11, color: '#2a4a5a', margin: '1px 0 0' }}>
+                        {fmt(booking.slot_start)} – {fmt(booking.slot_end)} · {booking.user_email}
+                      </p>
                     )}
                   </div>
-
-                  {/* Booking info */}
-                  {isOccupied && booking ? (
-                    <div className={`rounded-lg px-3 py-2 text-xs ${
-                      isCheckedIn ? 'bg-purple-50 border border-purple-100' : 'bg-blue-50 border border-blue-100'
-                    }`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={`font-medium ${isCheckedIn ? 'text-purple-700' : 'text-blue-700'}`}>
-                          {fmtTime(booking.slot_start)} – {fmtTime(booking.slot_end)}
-                        </span>
-                        <span className={`text-xs ${isCheckedIn ? 'text-purple-500' : 'text-blue-500'}`}>
-                          {fmtDate(booking.slot_start)}
-                        </span>
-                      </div>
-                      <p className={`mt-1 ${isCheckedIn ? 'text-purple-600' : 'text-blue-600'}`}>
-                        {booking.user_email}
-                      </p>
-                      <button
-                        onClick={() => {
-                          if (confirm('Cancel this booking?')) {
-                            apiClient.admin.cancel(booking.booking_id).then(load);
-                          }
-                        }}
-                        className="mt-2 text-xs text-red-600 hover:text-red-700 font-medium"
-                      >
-                        Cancel Booking
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="rounded-lg px-3 py-2 text-xs bg-green-50 border border-green-100 text-green-700 font-medium">
-                      No upcoming bookings
-                    </div>
-                  )}
+                  <span style={{
+                    padding: '3px 10px', borderRadius: 20, fontSize: 10, fontWeight: 700, flexShrink: 0,
+                    background: isCheckedIn ? 'rgba(124,92,191,0.15)' : isOccupied ? 'rgba(76,168,176,0.15)' : 'rgba(80,180,100,0.15)',
+                    color: isCheckedIn ? '#6a3fb5' : isOccupied ? '#1e7a88' : '#267040',
+                  }}>
+                    {isCheckedIn ? 'IN USE' : isOccupied ? 'BOOKED' : 'FREE'}
+                  </span>
                 </div>
               );
             })}
           </div>
-        </>
-      )}
+        </div>
 
-      {/* ── Pending Approvals ── */}
-      {!loading && tab === 'approvals' && (
-        <>
-          {pending.length === 0 ? (
-            <div className="text-center py-16">
-              <div className="text-4xl mb-3">✅</div>
-              <p className="font-semibold text-gray-900">All caught up</p>
-              <p className="text-sm text-gray-500 mt-1">No bookings awaiting approval.</p>
-            </div>
+        {/* Stat: occupancy gauge */}
+        <div style={{ background: '#f5c9b3', borderRadius: 20, padding: 24, boxShadow: '0 4px 24px rgba(0,0,0,0.07)', display: 'flex', flexDirection: 'column' }}>
+          <p style={{ fontSize: 13, fontWeight: 500, color: '#7a3d2a', margin: 0 }}>Occupancy</p>
+          <p style={bigNum}>
+            {resources.length > 0 ? Math.round((occupiedCount / resources.length) * 100) : 0}%
+          </p>
+          <p style={{ fontSize: 12, color: '#8a5040', margin: 0 }}>{occupiedCount} of {resources.length} rooms</p>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 8 }}>
+            <OccupancyGauge value={occupiedCount} max={resources.length || 1} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+            <span style={{ color: '#267040', fontWeight: 600 }}>{freeCount} free</span>
+            <span style={{ color: '#c0402c', fontWeight: 600 }}>{occupiedCount} occupied</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+
+        {/* KPI summary */}
+        <div style={card}>
+          <p style={cardLabel}>Total Rooms</p>
+          <p style={bigNum}>{resources.length}</p>
+          <p style={cardSub}>registered resources</p>
+          <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {[
+              { label: 'Available', val: freeCount,      color: '#267040' },
+              { label: 'Occupied',  val: occupiedCount,  color: '#c0402c' },
+              { label: 'Pending',   val: pending.length, color: '#b07020' },
+            ].map(({ label, val, color }) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, color: '#6b7a8d' }}>{label}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color }}>{val}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Active bookings log */}
+        <div style={card}>
+          <p style={{ ...cardLabel, marginBottom: 14 }}>Active Now</p>
+          {activeBookings.length === 0 ? (
+            <p style={{ fontSize: 13, color: '#9aa5b4' }}>No active bookings.</p>
           ) : (
-            <div className="space-y-3">
-              {pending.map(b => (
-                <ApprovalCard
-                  key={b.booking_id}
-                  booking={b}
-                  resourceName={
-                    resources.find(r => r.id === b.resource_id)?.name ??
-                    `Resource ${b.resource_id.slice(0, 8)}`
-                  }
-                  onApprove={() =>
-                    apiClient.admin.approve(b.booking_id).then(() => {
-                      setPending(prev => prev.filter(x => x.booking_id !== b.booking_id));
-                      load();
-                    })
-                  }
-                  onReject={() =>
-                    apiClient.admin.reject(b.booking_id).then(() =>
-                      setPending(prev => prev.filter(x => x.booking_id !== b.booking_id)),
-                    )
-                  }
-                  onCancel={() =>
-                    apiClient.admin.cancel(b.booking_id).then(() => {
-                      setPending(prev => prev.filter(x => x.booking_id !== b.booking_id));
-                      load();
-                    })
-                  }
-                />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {activeBookings.slice(0, 5).map(b => (
+                <div key={b.booking_id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                    background: b.state === 'CHECKED_IN' ? 'rgba(124,92,191,0.12)' : 'rgba(76,168,176,0.12)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: STATE_DOT[b.state] ?? '#4ca8b0' }}>
+                      {b.resource_name.slice(0, 2).toUpperCase()}
+                    </span>
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <p style={{ fontSize: 12.5, fontWeight: 600, color: '#1a2535', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {b.resource_name}
+                    </p>
+                    <p style={{ fontSize: 11, color: '#6b7a8d', margin: 0 }}>
+                      {fmt(b.slot_start)} – {fmt(b.slot_end)} · {fmtShort(b.slot_start)}
+                    </p>
+                  </div>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATE_DOT[b.state] ?? '#4ca8b0', flexShrink: 0, display: 'inline-block' }} />
+                </div>
               ))}
             </div>
           )}
-        </>
-      )}
-    </div>
-  );
-}
+        </div>
 
-// ── Sub-components ──────────────────────────────────────────────────────────
-
-function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-        active
-          ? 'bg-white text-gray-900 shadow-sm'
-          : 'text-gray-500 hover:text-gray-700'
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function StatCard({ value, label, color }: { value: number; label: string; color: 'gray' | 'green' | 'blue' }) {
-  const styles = {
-    gray:  'bg-gray-50 border-gray-200 text-gray-900',
-    green: 'bg-green-50 border-green-200 text-green-800',
-    blue:  'bg-blue-50 border-blue-200 text-blue-800',
-  };
-  return (
-    <div className={`rounded-xl border p-4 ${styles[color]}`}>
-      <p className="text-2xl font-bold">{value}</p>
-      <p className="text-xs font-medium mt-0.5 opacity-70">{label}</p>
-    </div>
-  );
-}
-
-function StatusChip({ occupied, checkedIn }: { occupied: boolean; checkedIn: boolean }) {
-  if (checkedIn) {
-    return (
-      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-        IN USE
-      </span>
-    );
-  }
-  if (occupied) {
-    return (
-      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-        BOOKED
-      </span>
-    );
-  }
-  return (
-    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-      FREE
-    </span>
-  );
-}
-
-function ApprovalCard({
-  booking,
-  resourceName,
-  onApprove,
-  onReject,
-  onCancel,
-}: {
-  booking: Booking;
-  resourceName: string;
-  onApprove: () => void;
-  onReject: () => void;
-  onCancel: () => void;
-}) {
-  const fmt = (iso: string) =>
-    new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        <p className="font-medium text-gray-900 text-sm">{resourceName}</p>
-        <p className="text-xs text-gray-400 mt-0.5">
-          #{booking.booking_id.slice(0, 8).toUpperCase()}
-          {booking.user_email ? ` · ${booking.user_email}` : ''}
-        </p>
-        {booking.slot_start && (
-          <p className="text-xs text-gray-500 mt-0.5">
-            {fmt(booking.slot_start)} — {fmt(booking.slot_end)}
-          </p>
-        )}
-        <div className="mt-2">
-          <Badge label={booking.state} color="amber" />
+        {/* Pending approvals */}
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <p style={cardLabel}>Pending Approvals</p>
+            {pending.length > 0 && (
+              <span style={{ background: '#fff3da', color: '#b07020', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>
+                {pending.length}
+              </span>
+            )}
+          </div>
+          {pending.length === 0 ? (
+            <div style={{ textAlign: 'center', paddingTop: 16 }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4ca8b0" strokeWidth="2" strokeLinecap="round" style={{ margin: '0 auto 8px', display: 'block' }}>
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              <p style={{ fontSize: 13, color: '#6b7a8d', margin: 0 }}>All caught up</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {pending.slice(0, 3).map(b => {
+                const resName = resources.find(r => r.id === b.resource_id)?.name ?? b.resource_id.slice(0, 8);
+                return (
+                  <div key={b.booking_id} style={{ background: '#fafafa', borderRadius: 12, padding: '10px 12px' }}>
+                    <p style={{ fontSize: 12.5, fontWeight: 600, color: '#1a2535', margin: '0 0 2px' }}>{resName}</p>
+                    <p style={{ fontSize: 11, color: '#6b7a8d', margin: '0 0 8px' }}>
+                      {b.user_email ?? '—'} · {fmtShort(b.slot_start)}
+                    </p>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        onClick={() => apiClient.admin.approve(b.booking_id).then(() => {
+                          setPending(prev => prev.filter(x => x.booking_id !== b.booking_id));
+                          fetchData(false);
+                        })}
+                        style={{
+                          flex: 1, padding: '5px 0', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                          background: '#eaf7f5', color: '#1e7a88', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => apiClient.admin.reject(b.booking_id).then(() =>
+                          setPending(prev => prev.filter(x => x.booking_id !== b.booking_id))
+                        )}
+                        style={{
+                          flex: 1, padding: '5px 0', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                          background: '#fde8e3', color: '#c0402c', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {pending.length > 3 && (
+                <p style={{ fontSize: 11, color: '#9aa5b4', textAlign: 'center', margin: 0 }}>+{pending.length - 3} more</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
-      <div className="flex gap-2 shrink-0">
-        <Button variant="secondary" size="sm" onClick={onApprove}>Approve</Button>
-        <Button variant="danger" size="sm" onClick={onReject}>Reject</Button>
-        <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
-      </div>
     </div>
   );
-}
-
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
