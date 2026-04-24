@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import type { ActiveBookingOverview, Booking, Resource } from '../types';
+import type { ActiveBookingOverview, AvailabilitySlot, Booking, Resource } from '../types';
 import { apiClient } from '../services/api';
 import { Spinner } from '../components/ui/Spinner';
 
@@ -39,6 +39,45 @@ function fmtShort(iso: string) {
   return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
+function RoomSlotPanel({ resourceId }: { resourceId: string }) {
+  const [slots, setSlots]   = useState<AvailabilitySlot[] | null>(null);
+  const [error, setError]   = useState(false);
+
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    apiClient.resources.availability(resourceId, today)
+      .then(res => setSlots(res.data.slots))
+      .catch(() => setError(true));
+  }, [resourceId]);
+
+  if (error) return <p style={{ fontSize: 11, color: '#c0402c', margin: '8px 0 4px' }}>Could not load slots.</p>;
+  if (!slots) return <p style={{ fontSize: 11, color: '#6b7a8d', margin: '8px 0 4px' }}>Loading…</p>;
+  if (slots.length === 0) return <p style={{ fontSize: 11, color: '#6b7a8d', margin: '8px 0 4px' }}>No slots today.</p>;
+
+  return (
+    <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+      {slots.map(s => {
+        const booked = s.status === 'BOOKED';
+        return (
+          <div
+            key={s.slot_start}
+            title={booked ? `Booked${s.waitlist_count ? ` · ${s.waitlist_count} waitlisted` : ''}` : 'Available'}
+            style={{
+              padding: '4px 9px', borderRadius: 8, fontSize: 10.5, fontWeight: 600,
+              background: booked ? 'rgba(192,64,44,0.13)' : 'rgba(38,112,64,0.13)',
+              color: booked ? '#c0402c' : '#267040',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {fmt(s.slot_start)}–{fmt(s.slot_end)}
+            {s.waitlist_count ? <span style={{ marginLeft: 4, opacity: 0.7 }}>+{s.waitlist_count}w</span> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function AdminDashboard() {
   const [resources, setResources]           = useState<Resource[]>([]);
   const [activeBookings, setActiveBookings] = useState<ActiveBookingOverview[]>([]);
@@ -47,6 +86,7 @@ export function AdminDashboard() {
   const [refreshing, setRefreshing]         = useState(false);
   const [lastUpdated, setLastUpdated]       = useState<Date | null>(null);
   const [error, setError]                   = useState<string | null>(null);
+  const [expandedRoom, setExpandedRoom]     = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchData = (showSpinner = false) => {
@@ -140,34 +180,60 @@ export function AdminDashboard() {
           <p style={{ fontSize: 12, color: '#4a6a7a', margin: '0 0 16px' }}>
             Live occupancy — {occupiedCount} of {resources.length} in use
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 340, overflowY: 'auto' }}>
             {sortedRes.map(r => {
               const booking     = bookingByResource.get(r.id);
               const isCheckedIn = booking?.state === 'CHECKED_IN';
               const isOccupied  = !!booking;
+              const isExpanded  = expandedRoom === r.id;
               return (
-                <div key={r.id} style={{
-                  background: 'rgba(255,255,255,0.55)', borderRadius: 12, padding: '10px 14px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-                }}>
-                  <div style={{ minWidth: 0 }}>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: '#1e3a4a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {r.name}
-                    </p>
-                    <p style={{ fontSize: 11, color: '#4a6a7a', margin: '1px 0 0' }}>{r.location}</p>
-                    {booking && (
-                      <p style={{ fontSize: 11, color: '#2a4a5a', margin: '1px 0 0' }}>
-                        {fmt(booking.slot_start)} – {fmt(booking.slot_end)} · {booking.user_email}
+                <div
+                  key={r.id}
+                  onClick={() => setExpandedRoom(isExpanded ? null : r.id)}
+                  style={{
+                    background: 'rgba(255,255,255,0.55)', borderRadius: 12, padding: '10px 14px',
+                    cursor: 'pointer', userSelect: 'none',
+                    border: isExpanded ? '1.5px solid rgba(76,168,176,0.5)' : '1.5px solid transparent',
+                    transition: 'border-color 0.15s',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: '#1e3a4a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {r.name}
                       </p>
-                    )}
+                      <p style={{ fontSize: 11, color: '#4a6a7a', margin: '1px 0 0' }}>{r.location}</p>
+                      {booking && (
+                        <p style={{ fontSize: 11, color: '#2a4a5a', margin: '1px 0 0' }}>
+                          {fmt(booking.slot_start)} – {fmt(booking.slot_end)} · {booking.user_email}
+                        </p>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                      <span style={{
+                        padding: '3px 10px', borderRadius: 20, fontSize: 10, fontWeight: 700,
+                        background: isCheckedIn ? 'rgba(124,92,191,0.15)' : isOccupied ? 'rgba(76,168,176,0.15)' : 'rgba(80,180,100,0.15)',
+                        color: isCheckedIn ? '#6a3fb5' : isOccupied ? '#1e7a88' : '#267040',
+                      }}>
+                        {isCheckedIn ? 'IN USE' : isOccupied ? 'BOOKED' : 'FREE'}
+                      </span>
+                      <svg
+                        width="12" height="12" viewBox="0 0 24 24" fill="none"
+                        stroke="#4a6a7a" strokeWidth="2.5" strokeLinecap="round"
+                        style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </div>
                   </div>
-                  <span style={{
-                    padding: '3px 10px', borderRadius: 20, fontSize: 10, fontWeight: 700, flexShrink: 0,
-                    background: isCheckedIn ? 'rgba(124,92,191,0.15)' : isOccupied ? 'rgba(76,168,176,0.15)' : 'rgba(80,180,100,0.15)',
-                    color: isCheckedIn ? '#6a3fb5' : isOccupied ? '#1e7a88' : '#267040',
-                  }}>
-                    {isCheckedIn ? 'IN USE' : isOccupied ? 'BOOKED' : 'FREE'}
-                  </span>
+                  {isExpanded && (
+                    <div onClick={e => e.stopPropagation()}>
+                      <p style={{ fontSize: 10, fontWeight: 600, color: '#4a6a7a', margin: '10px 0 0', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Today's slots
+                      </p>
+                      <RoomSlotPanel resourceId={r.id} />
+                    </div>
+                  )}
                 </div>
               );
             })}
