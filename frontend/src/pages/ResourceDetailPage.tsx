@@ -54,6 +54,10 @@ export function ResourceDetailPage() {
   const [fetchError, setFetchError] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
   const [gridRefreshKey, setGridRefreshKey] = useState(0);
+  const [userBookings, setUserBookings] = useState<{ resource_id: string; slot_start: string; slot_end: string }[]>([]);
+  const [userWaitlist, setUserWaitlist] = useState<string[]>([]);
+
+  const canBook = user?.role === 'ROLE_STUDENT' || user?.role === 'ROLE_FACULTY';
 
   useEffect(() => {
     if (resource || !paramId) return;
@@ -62,9 +66,37 @@ export function ResourceDetailPage() {
       .catch(() => setFetchError(true));
   }, [paramId, resource]);
 
+  useEffect(() => {
+    if (!canBook) return;
+    Promise.all([
+      apiClient.bookings.myBookings(),
+      apiClient.waitlist.mine(),
+    ])
+      .then(([bookingsRes, waitlistRes]) => {
+        const active = bookingsRes.data.bookings.filter(
+          b => b.state === 'CONFIRMED' || b.state === 'RESERVED' || b.state === 'CHECKED_IN'
+        );
+        setUserBookings(active.map(b => ({ resource_id: b.resource_id, slot_start: b.slot_start, slot_end: b.slot_end })));
+        setUserWaitlist(waitlistRes.data.entries.map(e => e.slot_start));
+      })
+      .catch(console.error);
+  }, [canBook, resource?.id]);
+
   const closeForm = () => {
     setSelectedSlot(null);
     setGridRefreshKey(k => k + 1);
+    Promise.all([
+      apiClient.bookings.myBookings(),
+      apiClient.waitlist.mine(),
+    ])
+      .then(([bookingsRes, waitlistRes]) => {
+        const active = bookingsRes.data.bookings.filter(
+          b => b.state === 'CONFIRMED' || b.state === 'RESERVED' || b.state === 'CHECKED_IN'
+        );
+        setUserBookings(active.map(b => ({ resource_id: b.resource_id, slot_start: b.slot_start, slot_end: b.slot_end })));
+        setUserWaitlist(waitlistRes.data.entries.map(e => e.slot_start));
+      })
+      .catch(console.error);
   };
 
   if (!resource && !fetchError) {
@@ -80,7 +112,6 @@ export function ResourceDetailPage() {
     );
   }
 
-  const canBook = user?.role === 'ROLE_STUDENT' || user?.role === 'ROLE_FACULTY';
   const tc = TYPE_COLOR[resource.type] ?? { bg: '#f2f4f8', color: '#6b7a8d' };
 
   return (
@@ -142,7 +173,7 @@ export function ResourceDetailPage() {
 
       {/* Availability */}
       {canBook ? (
-        <AvailabilityGrid resource={resource} onBook={setSelectedSlot} refreshKey={gridRefreshKey} />
+        <AvailabilityGrid resource={resource} onBook={setSelectedSlot} refreshKey={gridRefreshKey} userBookings={userBookings} userWaitlist={userWaitlist} />
       ) : (
         <div style={{ background: '#fff3da', border: '1px solid #f0dda0', borderRadius: 14, padding: '14px 18px', fontSize: 13, color: '#8a6020' }}>
           Only students and faculty can book resources. You are logged in as <strong>{user?.role}</strong>.

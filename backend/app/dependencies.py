@@ -87,10 +87,13 @@ def get_checkin_service(
         SMSChannel(), 
         WebSocketChannel(redis)
     ])
+    from app.services.catalogue_service import CatalogueService
+    catalogue_svc = CatalogueService(session=AsyncSessionLocal(), redis=redis)
     return CheckInService(
         redis=redis,
         session_factory=AsyncSessionLocal,
-        notification_svc=notification_svc
+        notification_svc=notification_svc,
+        catalogue_svc=catalogue_svc
     )
 
 def get_catalogue_service(

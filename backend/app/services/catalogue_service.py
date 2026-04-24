@@ -13,10 +13,10 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import BookingRow, ResourceRow
+from app.db.models import BookingRow, ResourceRow, WaitlistRow
 
 
 class CatalogueService:
@@ -123,12 +123,21 @@ class CatalogueService:
             )
             booked = result.scalar_one_or_none()
 
+            # Check waitlist count for this slot
+            wl_result = await self._session.execute(
+                select(func.count()).select_from(WaitlistRow).where(
+                    WaitlistRow.resource_id == resource_id,
+                    WaitlistRow.slot_start == slot_start,
+                )
+            )
+            waitlist_count = wl_result.scalar() or 0
+
             slots.append(
                 {
                     "slot_start": slot_start.isoformat(),
                     "slot_end": slot_end.isoformat(),
                     "status": "BOOKED" if booked else "AVAILABLE",
-                    "waitlist_count": 0,  # F4 Waitlist feature placeholder
+                    "waitlist_count": waitlist_count,
                 }
             )
 
