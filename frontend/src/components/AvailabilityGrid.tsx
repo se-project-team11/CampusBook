@@ -141,10 +141,10 @@ export function AvailabilityGrid({ resource, onBook, refreshKey = 0, userBooking
                 <div key={slot.slot_start} style={{
                   borderRadius: 14, padding: '12px 10px',
                   background: '#fde8e3', border: '1px solid #f5c6b8',
-                  display: 'flex', flexDirection: 'column', gap: 4,
+                  display: 'flex', flexDirection: 'column', gap: 4, textAlign: 'center',
                 }}>
                   <p style={{ fontSize: 13, fontWeight: 600, color: '#c0402c', margin: 0 }}>{formatTime(slot.slot_start)}</p>
-                  <p style={{ fontSize: 11, color: '#c0402c', opacity: 0.7, margin: 0 }}>{isOwnBooking ? 'Your booking' : 'Booked'}</p>
+                  <p style={{ fontSize: 11, color: '#c0402c', opacity: 0.7, margin: '3px 0 0' }}>{isOwnBooking ? 'Your booking' : 'Booked'}</p>
                   {slot.waitlist_count && slot.waitlist_count > 0 && !isOwnBooking ? (
                     <p style={{ fontSize: 11, color: '#b07020', margin: 0 }}>{slot.waitlist_count} waiting</p>
                   ) : null}
