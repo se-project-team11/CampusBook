@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import List, Optional
 from uuid import UUID
 
@@ -9,9 +10,12 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import BookingRow
+from app.exceptions import DatabaseError, RepositoryError
 from app.models.booking import Booking, BookingState
 from app.models.time_slot import TimeSlot
 from app.repositories.booking_repository import BookingRepository
+
+logger = logging.getLogger(__name__)
 
 
 class PostgresBookingRepository(BookingRepository):
@@ -31,28 +35,36 @@ class PostgresBookingRepository(BookingRepository):
 
     async def save(self, booking: Booking, db: Optional[AsyncSession] = None) -> None:
         session = db or self._session
-        row = BookingRow(
-            id=booking.id,
-            user_id=booking.user_id,
-            resource_id=booking.resource_id,
-            slot_start=booking.slot_start,
-            slot_end=booking.slot_end,
-            state=booking.state.value,
-            qr_token=booking.qr_token,
-            requires_approval=booking.requires_approval,
-            user_email=booking.user_email,
-            notes=booking.notes,
-            expires_at=booking.expires_at,
-        )
-        session.add(row)
-        await session.flush()  # Write to DB within transaction, do not commit yet
+        try:
+            row = BookingRow(
+                id=booking.id,
+                user_id=booking.user_id,
+                resource_id=booking.resource_id,
+                slot_start=booking.slot_start,
+                slot_end=booking.slot_end,
+                state=booking.state.value,
+                qr_token=booking.qr_token,
+                requires_approval=booking.requires_approval,
+                user_email=booking.user_email,
+                notes=booking.notes,
+                expires_at=booking.expires_at,
+            )
+            session.add(row)
+            await session.flush()
+        except Exception as e:
+            logger.error(f"Failed to save booking {booking.id}: {e}", exc_info=True)
+            raise RepositoryError(f"Failed to save booking: {e}") from e
 
     async def find_by_id(self, booking_id: UUID) -> Optional[Booking]:
-        result = await self._session.execute(
-            select(BookingRow).where(BookingRow.id == booking_id)
-        )
-        row = result.scalar_one_or_none()
-        return self._to_domain(row) if row else None
+        try:
+            result = await self._session.execute(
+                select(BookingRow).where(BookingRow.id == booking_id)
+            )
+            row = result.scalar_one_or_none()
+            return self._to_domain(row) if row else None
+        except Exception as e:
+            logger.error(f"Failed to find booking by id {booking_id}: {e}", exc_info=True)
+            raise RepositoryError(f"Failed to find booking: {e}") from e
 
     async def find_active_by_slot(
         self, resource_id: UUID, slot: TimeSlot
@@ -62,61 +74,79 @@ class PostgresBookingRepository(BookingRepository):
         Used inside the pessimistic lock check — if this list is non-empty,
         the slot is taken and the current request must fail with 409.
         """
-        result = await self._session.execute(
-            select(BookingRow).where(
-                BookingRow.resource_id == resource_id,
-                BookingRow.slot_start  == slot.start,
-                BookingRow.slot_end    == slot.end,
-                BookingRow.state.notin_(
-                    [BookingState.RELEASED.value, BookingState.NO_SHOW.value]
-                ),
+        try:
+            result = await self._session.execute(
+                select(BookingRow).where(
+                    BookingRow.resource_id == resource_id,
+                    BookingRow.slot_start  == slot.start,
+                    BookingRow.slot_end    == slot.end,
+                    BookingRow.state.notin_(
+                        [BookingState.RELEASED.value, BookingState.NO_SHOW.value]
+                    ),
+                )
             )
-        )
-        return [self._to_domain(r) for r in result.scalars().all()]
+            return [self._to_domain(r) for r in result.scalars().all()]
+        except Exception as e:
+            logger.error(f"Failed to find active bookings by slot: {e}", exc_info=True)
+            raise RepositoryError(f"Failed to find active bookings: {e}") from e
 
     async def find_by_user(self, user_id: UUID) -> List[Booking]:
-        result = await self._session.execute(
-            select(BookingRow)
-            .where(BookingRow.user_id == user_id)
-            .order_by(BookingRow.created_at.desc())
-        )
-        return [self._to_domain(r) for r in result.scalars().all()]
+        try:
+            result = await self._session.execute(
+                select(BookingRow)
+                .where(BookingRow.user_id == user_id)
+                .order_by(BookingRow.created_at.desc())
+            )
+            return [self._to_domain(r) for r in result.scalars().all()]
+        except Exception as e:
+            logger.error(f"Failed to find bookings by user {user_id}: {e}", exc_info=True)
+            raise RepositoryError(f"Failed to find user bookings: {e}") from e
 
     async def update_state(
         self, booking_id: UUID, new_state: str, db: Optional[AsyncSession] = None
     ) -> None:
-        session = db or self._session
-        await session.execute(
-            update(BookingRow)
-            .where(BookingRow.id == booking_id)
-            .values(state=new_state)
-        )
+        try:
+            session = db or self._session
+            await session.execute(
+                update(BookingRow)
+                .where(BookingRow.id == booking_id)
+                .values(state=new_state)
+            )
+        except Exception as e:
+            logger.error(f"Failed to update booking state for {booking_id}: {e}", exc_info=True)
+            raise RepositoryError(f"Failed to update booking state: {e}") from e
 
     async def find_active_bookings(self) -> List[Booking]:
         """Return CONFIRMED and CHECKED_IN bookings with slot_end in the future."""
-        now = datetime.now(timezone.utc)
-        result = await self._session.execute(
-            select(BookingRow)
-            .where(
-                BookingRow.state.in_([BookingState.CONFIRMED.value, BookingState.CHECKED_IN.value]),
-                BookingRow.slot_end >= now,
+        try:
+            now = datetime.now(timezone.utc)
+            result = await self._session.execute(
+                select(BookingRow)
+                .where(
+                    BookingRow.state.in_([BookingState.CONFIRMED.value, BookingState.CHECKED_IN.value]),
+                    BookingRow.slot_end >= now,
+                )
+                .order_by(BookingRow.slot_start.asc())
             )
-            .order_by(BookingRow.slot_start.asc())
-        )
-        return [self._to_domain(r) for r in result.scalars().all()]
+            return [self._to_domain(r) for r in result.scalars().all()]
+        except Exception as e:
+            logger.error(f"Failed to find active bookings: {e}", exc_info=True)
+            raise RepositoryError(f"Failed to find active bookings: {e}") from e
 
     async def find_pending_approvals(self) -> List[Booking]:
-        result = await self._session.execute(
-            select(BookingRow)
-            .where(
-                BookingRow.requires_approval == True,
-                BookingRow.state == BookingState.RESERVED.value,
+        try:
+            result = await self._session.execute(
+                select(BookingRow)
+                .where(
+                    BookingRow.requires_approval == True,
+                    BookingRow.state == BookingState.RESERVED.value,
+                )
+                .order_by(BookingRow.created_at.desc())
             )
-            .order_by(BookingRow.created_at.desc())
-        )
-        return [self._to_domain(r) for r in result.scalars().all()]
-
-    # ── Private helpers ──────────────────────────────────────────────────────
+            return [self._to_domain(r) for r in result.scalars().all()]
+        except Exception as e:
+            logger.error(f"Failed to find pending approvals: {e}", exc_info=True)
+            raise RepositoryError(f"Failed to find pending approvals: {e}") from e
 
     @staticmethod
     def _to_domain(row: BookingRow) -> Booking:

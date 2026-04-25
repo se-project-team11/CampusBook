@@ -54,9 +54,9 @@ export function BookingForm({ resource, slot, onClose }: Props) {
       navigate('/confirmation', { state: { booking: res.data, resource } });
       onClose();
     } catch (err) {
-      const axiosErr = err as AxiosError<{ detail: string }>;
+      const axiosErr = err as AxiosError<{ error?: { message: string }; detail?: string }>;
       const status = axiosErr.response?.status;
-      const detail = axiosErr.response?.data?.detail ?? '';
+      const detail = axiosErr.response?.data?.error?.message ?? axiosErr.response?.data?.detail ?? '';
 
       if (status === 403) {
         setError(detail || 'You do not have permission to book this resource type.');

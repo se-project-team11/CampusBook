@@ -247,7 +247,7 @@ class TestCreateBookingRoute:
             headers=make_headers("ROLE_STUDENT"),
         )
         assert resp.status_code == 422
-        assert "max 3 hours" in resp.json()["detail"]
+        assert "max 3 hours" in resp.json()["error"]["message"]
         app.dependency_overrides.clear()
 
     def test_end_before_start_returns_422(self):
