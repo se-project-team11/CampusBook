@@ -70,7 +70,7 @@ export function BookingConfirmation() {
         </div>
       ) : (
         <>
-          {booking.slot_start && <CheckInTimer slotStart={booking.slot_start} />}
+          {booking.slot_start && <CheckInTimer slotStart={booking.slot_start} slotEnd={booking.slot_end} />}
           <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center mb-6">
             <p className="text-sm font-medium text-gray-700 mb-4">Scan at the venue to check in</p>
             <div className="flex justify-center">
@@ -106,10 +106,11 @@ export function BookingConfirmation() {
   );
 }
 
-function CheckInTimer({ slotStart }: { slotStart: string }) {
+function CheckInTimer({ slotStart, slotEnd }: { slotStart: string; slotEnd: string }) {
   const slotMs      = new Date(slotStart).getTime();
-  const windowStart = slotMs - 5 * 60_000;   // 5 min before slot
-  const windowEnd   = slotMs + 5 * 60_000;   // 5 min after slot
+  const slotEndMs   = new Date(slotEnd).getTime();
+  const windowStart = slotMs - 5 * 60_000;
+  const windowEnd   = slotMs + 5 * 60_000;
   const windowEndIso = new Date(windowEnd).toISOString();
 
   const { minutes, seconds, expired } = useCountdown(windowEndIso);
@@ -118,6 +119,18 @@ function CheckInTimer({ slotStart }: { slotStart: string }) {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  const isOngoing = now >= slotMs && now < slotEndMs;
+
+  // Ongoing slot — no timer, no expiry. User can check in anytime until they cancel.
+  if (isOngoing) {
+    return (
+      <div className="bg-green-50 border border-green-200 rounded-xl px-5 py-4 mb-6 text-center">
+        <p className="font-semibold text-green-700">Session in progress</p>
+        <p className="text-green-600 text-sm mt-1">Scan the QR code to check in anytime.</p>
+      </div>
+    );
+  }
 
   if (expired) {
     return (
